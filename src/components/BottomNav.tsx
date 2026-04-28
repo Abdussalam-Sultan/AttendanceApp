@@ -1,0 +1,112 @@
+import React from 'react';
+import { Home, ClipboardList, LogIn, LogOut, Loader2, Plane, User, ShieldCheck } from 'lucide-react';
+import { motion } from 'motion/react';
+import { haptics } from '../lib/haptics';
+
+type TabType = 'home' | 'attendance' | 'leave' | 'profile' | 'admin';
+
+interface BottomNavProps {
+  user: any;
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
+  isCheckedIn: boolean;
+  isDayCompleted: boolean;
+  onGlobalAction: () => void;
+  isLoading: boolean;
+}
+
+export const BottomNav: React.FC<BottomNavProps> = ({ 
+  user, 
+  activeTab, 
+  setActiveTab, 
+  isCheckedIn, 
+  isDayCompleted, 
+  onGlobalAction, 
+  isLoading 
+}) => {
+  const handleTabClick = (id: TabType) => {
+    setActiveTab(id);
+    haptics.impact();
+  };
+
+  const handleAction = () => {
+    if (isDayCompleted) return;
+    onGlobalAction();
+    haptics.impact();
+  };
+
+  const tabs = [
+    { id: 'home' as TabType, label: 'Home', icon: Home },
+    { id: 'attendance' as TabType, label: 'Logs', icon: ClipboardList },
+    { 
+      id: 'action' as any, 
+      label: isCheckedIn ? 'Out' : 'In', 
+      icon: isCheckedIn ? LogOut : LogIn, 
+      isAction: true 
+    },
+    (user?.role === 'Admin' || user?.role === 'Manager')
+      ? { id: 'admin' as TabType, label: user?.role === 'Manager' ? 'Operations' : 'Admin', icon: ShieldCheck }
+      : { id: 'leave' as TabType, label: 'Leave', icon: Plane },
+    { id: 'profile' as TabType, label: 'Profile', icon: User },
+  ];
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-around items-center px-4 pt-2 pb-6 z-50 transition-all shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.05)]">
+      {tabs.map((tab) => (
+        tab.isAction ? (
+          <button
+            key="global-action"
+            onClick={handleAction}
+            disabled={isDayCompleted || isLoading}
+            className={`flex flex-col items-center justify-center relative -translate-y-4 transition-all duration-500 rounded-full p-0.5 ${
+              isDayCompleted ? 'opacity-50 grayscale' : 'active:scale-95'
+            }`}
+          >
+            <div className={`p-4 rounded-full shadow-2xl transition-all duration-500 border-4 border-white dark:border-slate-900 ${
+              isCheckedIn 
+                ? 'bg-rose-500 shadow-rose-200 dark:shadow-none' 
+                : 'bg-indigo-600 shadow-indigo-200 dark:shadow-none'
+            }`}>
+              {isLoading ? (
+                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              ) : (
+                <tab.icon className="w-6 h-6 text-white" />
+              )}
+            </div>
+            <span className={`text-[10px] font-black uppercase tracking-widest mt-1 ${
+              isCheckedIn ? 'text-rose-600' : 'text-indigo-600'
+            }`}>
+              {tab.label}
+            </span>
+          </button>
+        ) : (
+          <button
+            id={`nav-tab-${tab.id}`}
+            key={tab.id}
+            onClick={() => handleTabClick(tab.id as TabType)}
+            className="flex flex-col items-center justify-center relative transition-all duration-300"
+          >
+            <tab.icon
+              className={`w-5 h-5 mb-1 transition-colors duration-200 ${
+                activeTab === tab.id ? 'text-indigo-600' : 'text-slate-400 dark:text-slate-500'
+              }`}
+            />
+            <span
+              className={`text-[9px] font-bold uppercase tracking-widest transition-colors duration-200 ${
+                activeTab === tab.id ? 'text-indigo-600' : 'text-slate-400 dark:text-slate-500'
+              }`}
+            >
+              {tab.label}
+            </span>
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute -bottom-2 w-1 h-1 bg-indigo-600 rounded-full"
+              />
+            )}
+          </button>
+        )
+      ))}
+    </div>
+  );
+};

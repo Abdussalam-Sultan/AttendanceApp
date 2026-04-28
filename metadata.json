@@ -1,0 +1,9 @@
+{
+  "name": "DoorLog",
+  "description": "A comprehensive attendance management application featuring QR scanning, detailed statistics, and profile management.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
