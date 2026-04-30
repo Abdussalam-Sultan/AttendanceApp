@@ -173,7 +173,7 @@ export const LeaveView: React.FC = () => {
               onClick={() => setFilterStatus(status)}
               className={`px-6 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 filterStatus === status 
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' 
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none' 
                   : 'bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
@@ -188,7 +188,7 @@ export const LeaveView: React.FC = () => {
              <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 text-indigo-600 animate-spin" /></div>
           ) : filteredHistory.length > 0 ? (
             filteredHistory.map((leave) => (
-              <div key={leave.id} className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
+              <div key={leave.id} className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
                 <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-bold ${
                   leave.status === 'Approved' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
                   leave.status === 'Rejected' ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
@@ -356,7 +356,7 @@ export const LeaveView: React.FC = () => {
 
           <button 
             type="submit"
-            className="w-full bg-indigo-600 text-white p-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98] mt-4 font-bold"
+            className="w-full bg-indigo-600 text-white p-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-[0.98] mt-4 font-bold"
           >
             <Send className="w-5 h-5" />
             Submit Request
@@ -400,7 +400,7 @@ export const LeaveView: React.FC = () => {
                   onClick={capturePhoto}
                   className="w-20 h-20 rounded-full border-4 border-white p-1"
                 >
-                  <div className="w-full h-full bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
+                  <div className="w-full h-full bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg dark:shadow-none active:scale-90 transition-transform">
                     <Camera className="w-8 h-8" />
                   </div>
                 </button>
@@ -416,7 +416,7 @@ export const LeaveView: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800"
+                className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl dark:shadow-none border border-slate-100 dark:border-slate-800"
               >
                 <div className="bg-indigo-600 p-6 text-white relative overflow-hidden">
                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl transform translate-x-12 -translate-y-12"></div>
@@ -492,7 +492,7 @@ export const LeaveView: React.FC = () => {
 
       {/* Leave Balance Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-indigo-600 dark:bg-indigo-700 p-5 rounded-3xl text-white shadow-lg relative overflow-hidden group">
+        <div className="bg-indigo-600 dark:bg-indigo-700 p-5 rounded-3xl text-white shadow-lg dark:shadow-none relative overflow-hidden group">
            <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
            <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1">Annual Leave</p>
            <div className="flex items-baseline gap-2">
@@ -500,7 +500,7 @@ export const LeaveView: React.FC = () => {
              <span className="text-indigo-100 text-[10px] font-bold">Days Left</span>
            </div>
         </div>
-        <div className="bg-emerald-500 dark:bg-emerald-600 p-5 rounded-3xl text-white shadow-lg relative overflow-hidden group">
+        <div className="bg-emerald-500 dark:bg-emerald-600 p-5 rounded-3xl text-white shadow-lg dark:shadow-none relative overflow-hidden group">
            <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
            <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1">Sick Leave</p>
            <div className="flex items-baseline gap-2">
@@ -536,7 +536,7 @@ export const LeaveView: React.FC = () => {
           {loading ? (
              <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 text-slate-200 dark:text-slate-700 animate-spin" /></div>
           ) : leaveHistory.slice(0, 2).map((leave, idx) => (
-            <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
+            <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
               <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-bold ${
                 leave.status === 'Pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
               }`}>
@@ -567,7 +567,7 @@ export const LeaveView: React.FC = () => {
       {/* Summary Card and Policy Link */}
       <div className="flex flex-col gap-3 mt-2">
         <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-center">
-           <div className="p-3 bg-white dark:bg-slate-900 w-fit mx-auto rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-4">
+           <div className="p-3 bg-white dark:bg-slate-900 w-fit mx-auto rounded-2xl shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 mb-4">
               <FileText className="w-6 h-6 text-slate-400 dark:text-slate-600" />
            </div>
            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">No leave documents</h3>

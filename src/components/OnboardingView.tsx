@@ -166,7 +166,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) =>
         onClick={nextStep}
         className={`mt-10 w-full py-5 rounded-[28px] text-xs font-bold uppercase tracking-[0.2em] transition-all ${
           role 
-            ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100 active:scale-95' 
+            ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95' 
             : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
         }`}
       >
@@ -212,7 +212,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) =>
       </div>
       <button 
         onClick={nextStep}
-        className="mt-10 w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 active:scale-95 transition-all"
+        className="mt-10 w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
       >
         Complete Setup
       </button>
@@ -225,7 +225,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) =>
         initial={{ scale: 0.2, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', damping: 12 }}
-        className="w-32 h-32 mb-10 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-2xl shadow-indigo-200"
+        className="w-32 h-32 mb-10 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-2xl shadow-indigo-200 dark:shadow-none"
       >
         <Check className="w-16 h-16" />
       </motion.div>

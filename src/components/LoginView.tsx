@@ -53,33 +53,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     
     try {
       let user;
-      const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
-        : { 
-            name: formData.name, 
-            email: formData.email, 
-            password: formData.password,
-            branchId: formData.branchId
-          };
-        
-      const res = await fetch(isLogin ? '/api/auth/login' : '/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        let errorMessage = data.error || (isLogin ? 'Login failed' : 'Registration failed');
-        if (data.details) {
-          errorMessage += `: ${data.details}`;
-        }
-        throw new Error(errorMessage);
+      if (isLogin) {
+        user = await api.login({ email: formData.email, password: formData.password });
+      } else {
+        user = await api.register({ 
+          name: formData.name, 
+          email: formData.email, 
+          password: formData.password,
+          branchId: formData.branchId
+        });
       }
-      
-      api.saveAuthData(data.user, data.token);
-      onSuccess(data.user);
+      onSuccess(user);
     } catch (err: any) {
       setError(err.message || "Something went wrong. Please check your connection.");
       console.error(err);
@@ -113,7 +97,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       </div>
 
       {/* Form Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 flex-1 flex flex-col">
+      <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 flex-1 flex flex-col">
         {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-2xl text-red-600 dark:text-red-400 text-xs font-medium animate-in fade-in slide-in-from-top-2">
             {error}

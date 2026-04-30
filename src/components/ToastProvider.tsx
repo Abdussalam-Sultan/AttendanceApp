@@ -98,7 +98,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-slate-900 rounded-[32px] p-8 w-full max-w-sm relative z-10 shadow-2xl border border-slate-100 dark:border-slate-800"
+              className="bg-white dark:bg-slate-900 rounded-[32px] p-8 w-full max-w-sm relative z-10 shadow-2xl dark:shadow-none border border-slate-100 dark:border-slate-800"
             >
               <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-600 mb-6">
                  <AlertTriangle className="w-6 h-6" />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User as UserIcon, Menu, Bell, Clock, Briefcase, Calendar, BarChart3, Settings, ChevronRight, MapPin, Loader2, ArrowRight, ShieldCheck, Plane } from 'lucide-react';
+import { User as UserIcon, Menu, Bell, Clock, Briefcase, Calendar, BarChart3, Settings, ChevronRight, MapPin, Loader2, ArrowRight, ShieldCheck, Plane, LogIn, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
 import { User, AttendanceStats, AttendanceRecord, Announcement, BranchStats } from '../types';
@@ -7,7 +7,7 @@ import { haptics } from '../lib/haptics';
 import { Logo } from './Logo';
 
 interface HomeViewProps {
-  onNavigate: (tab: any) => void;
+  onNavigate: (tab: any, subTab?: any) => void;
   onLogout: () => void;
   showNotifications: boolean;
   setShowNotifications: (show: boolean) => void;
@@ -16,10 +16,10 @@ interface HomeViewProps {
   onRefreshData: () => void;
   handleGlobalAction: () => void;
   isActionLoading: boolean;
+  onOpenDetail: (item: any) => void;
 }
 
 import { useToast } from './ToastProvider';
-import { LogOut } from 'lucide-react';
 
 export const HomeView: React.FC<HomeViewProps> = ({ 
   onNavigate, 
@@ -30,7 +30,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   todayRecord,
   onRefreshData,
   handleGlobalAction,
-  isActionLoading
+  isActionLoading,
+  onOpenDetail
 }) => {
   const { confirm } = useToast();
   const [user, setUser] = useState<User | null>(null);
@@ -73,20 +74,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
 // Removing old notification helpers
 
-  const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const todayDate = new Date().toLocaleDateString('en-US', { 
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeString = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const hours = currentTime.getHours();
+  let greeting = 'Good morning';
+  if (hours >= 12 && hours < 17) greeting = 'Good afternoon';
+  if (hours >= 17) greeting = 'Good evening';
+
+  const todayDate = currentTime.toLocaleDateString('en-US', { 
     weekday: 'long', 
     day: 'numeric', 
     month: 'long', 
     year: 'numeric' 
   });
 
+  const monthYear = currentTime.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
   const quickActions = [
-    { label: 'My Attendance', icon: Briefcase, color: 'bg-emerald-50 text-emerald-600', tab: 'attendance' },
-    user?.role === 'Manager' 
-      ? { label: 'Request Leave', icon: Plane, color: 'bg-indigo-50 text-indigo-600', tab: 'leave' }
-      : { label: 'Calendar', icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'home' },
-    { label: 'Reports', icon: BarChart3, color: 'bg-orange-50 text-orange-600', tab: 'attendance' },
+    { label: 'Calendar', icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'attendance', subTab: 'Calendar' },
+    { label: 'My Logs', icon: Briefcase, color: 'bg-emerald-50 text-emerald-600', tab: 'attendance' },
+    { label: 'Request Leave', icon: Plane, color: 'bg-indigo-50 text-indigo-600', tab: 'leave' },
     { label: 'Settings', icon: Settings, color: 'bg-indigo-50 text-indigo-600', tab: 'profile' },
   ];
 
@@ -102,8 +115,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const isCheckedIn = todayRecord && (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
   const isDayCompleted = todayRecord && (todayRecord.checkOut !== '--:--' && !!todayRecord.checkOut);
 
-  const handleActionWithHaptic = (tab: any) => {
-    onNavigate(tab);
+    const handleActionWithHaptic = (tab: any, subTab?: any) => {
+    onNavigate(tab, subTab);
     haptics.impact();
   };
 
@@ -132,7 +145,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         >
           <Bell className="w-6 h-6 text-slate-900 dark:text-slate-100" />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-50 dark:border-slate-900 scale-110 shadow-sm shadow-red-200"></span>
+            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-50 dark:border-slate-900 scale-110 shadow-sm shadow-red-200 dark:shadow-none"></span>
           )}
         </button>
       </div>
@@ -152,10 +165,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              className="fixed inset-y-0 left-0 w-4/5 max-w-sm bg-white dark:bg-slate-900 z-[101] shadow-2xl p-6 flex flex-col"
+            className="fixed inset-y-0 left-0 w-4/5 max-w-sm bg-white dark:bg-slate-900 z-[101] shadow-2xl dark:shadow-none p-6 flex flex-col"
             >
               <div className="flex items-center gap-4 mb-8">
-                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
+                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg dark:shadow-none">
                   <Briefcase className="w-6 h-6" />
                 </div>
                 <div>
@@ -168,7 +181,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 {[
                   { icon: Clock, label: 'Daily Log', sub: 'View time entries', tab: 'attendance' },
                   { icon: BarChart3, label: 'Analytics', sub: 'Attendance trends', tab: 'attendance' },
-                  { icon: MapPin, label: 'Office Map', sub: 'Locate facilities', tab: 'home' },
                   { icon: Settings, label: 'App Settings', sub: 'Customize behavior', tab: 'profile' },
                   ...(user?.role === 'Admin' || user?.role === 'Manager'
                     ? [{ icon: ShieldCheck, label: user.role === 'Manager' ? 'Operations' : 'Admin Panel', sub: 'Management console', tab: 'admin' }] 
@@ -204,7 +216,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   }}
                   className="w-full flex items-center gap-4 p-4 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-600 transition-all active:scale-95 text-left"
                 >
-                  <div className="p-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm">
+                  <div className="p-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm dark:shadow-none">
                     <LogOut className="w-5 h-5" />
                   </div>
                   <div>
@@ -224,11 +236,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* Greeting */}
       <div className="flex justify-between items-end">
         <div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Good morning, 👋</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">{greeting}, 👋</p>
           <h1 className="text-2xl font-bold font-display text-slate-900 dark:text-white transition-colors">{user.name}</h1>
           <p className="text-slate-400 dark:text-slate-500 text-sm">Let's make today productive!</p>
         </div>
-        <div className="w-16 h-16 rounded-full border-2 border-white dark:border-slate-800 shadow-soft overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-slate-800">
+        <div className="w-16 h-16 rounded-full border-2 border-white dark:border-slate-800 shadow-soft dark:shadow-none overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-slate-800">
           {user.avatar ? (
             <img 
               src={user.avatar} 
@@ -243,81 +255,84 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
 
       {/* Status Card */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 to-indigo-500 dark:from-indigo-700 dark:to-indigo-600 p-6 rounded-3xl shadow-lg text-white">
+      <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 to-indigo-500 dark:from-indigo-700 dark:to-indigo-600 p-8 rounded-[40px] shadow-xl dark:shadow-none text-white">
         {/* Background Decoration */}
-        <div className="absolute top-1/2 -right-4 -translate-y-1/2 opacity-20 transform scale-150 pointer-events-none text-white/50">
-          <Calendar className="w-32 h-32" />
-        </div>
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col h-full">
-          <div className="flex justify-between items-start">
-             <div>
-               <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1">Today's Date</p>
-               <p className="text-base font-bold mb-6 border-b border-white/10 pb-2 w-fit pr-4">{todayDate}</p>
-             </div>
-             {todayRecord && (
-               <div className="flex flex-col items-end gap-1">
-                 <div className="bg-white/20 dark:bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-[10px] font-bold uppercase tracking-wider">
-                    In: {todayRecord.checkIn}
-                 </div>
-                 {todayRecord.checkOut !== '--:--' && (
-                    <div className={`px-3 py-1.5 rounded-xl border border-white/20 text-[10px] font-bold uppercase tracking-wider ${
-                      todayRecord.checkOutStatus === 'Overtime' ? 'bg-indigo-400' : 
-                      todayRecord.checkOutStatus === 'Early Leave' ? 'bg-amber-400' : 'bg-emerald-400'
-                    }`}>
-                      Out: {todayRecord.checkOut} • {todayRecord.checkOutStatus}
-                    </div>
-                 )}
-               </div>
-             )}
-          </div>
+        <div className="relative z-10 flex flex-col items-center text-center">
+          <button 
+            onClick={() => handleActionWithHaptic('attendance', 'Calendar')}
+            className="flex items-center gap-2 mb-6 bg-white/10 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/20 active:scale-95 transition-all"
+          >
+            <Calendar className="w-3.5 h-3.5 text-indigo-200" />
+            <p className="text-[11px] font-bold uppercase tracking-wider">{todayDate}</p>
+          </button>
           
-          <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1">Current Time</p>
-          <div className="flex items-baseline gap-2 mb-8">
-            <span className="text-4xl font-bold font-display tracking-tight leading-none">{currentTime.split(' ')[0]}</span>
-            <span className="text-xl font-medium opacity-80">{currentTime.split(' ')[1]}</span>
+          <div className="flex flex-col items-center gap-1 mb-8">
+            <span className="text-6xl font-bold font-display tracking-tighter leading-none">{timeString.split(' ')[0]}</span>
+            {timeString.split(' ')[1] && (
+              <span className="text-xl font-medium opacity-80 uppercase tracking-widest">{timeString.split(' ')[1]}</span>
+            )}
           </div>
 
-          <div className="mt-auto flex justify-between items-center gap-4">
-            <div className="flex items-center gap-2 bg-indigo-700/40 backdrop-blur-sm border border-white/20 rounded-full px-3 py-1.5 shadow-sm">
-              <div className={`w-1.5 h-1.5 ${isCheckedIn ? 'bg-emerald-400 animate-pulse' : isDayCompleted ? 'bg-slate-400' : 'bg-red-400'} rounded-full`}></div>
-              <span className="text-[10px] font-bold tracking-tight">
-                {isCheckedIn ? 'Status: Active' : isDayCompleted ? 'Shift Completed' : "You haven't checked in yet"}
-              </span>
+          <div className="grid grid-cols-2 w-full gap-4 mb-8">
+            <div className="flex flex-col items-center p-3 bg-white/5 rounded-3xl border border-white/10">
+              <p className="text-indigo-200 text-[9px] font-bold uppercase tracking-widest mb-1">Check In</p>
+              <div className="flex items-center gap-2">
+                <LogIn className="w-3 h-3 text-emerald-400" />
+                <span className="text-lg font-bold">{todayRecord?.checkIn || '--:--'}</span>
+              </div>
             </div>
-
-            <button 
-              onClick={handleAction}
-              disabled={isActionLoading || isDayCompleted}
-              className={`py-3 px-5 rounded-2xl flex items-center gap-2 shadow-xl hover:bg-slate-50 dark:hover:bg-slate-200 active:scale-95 transition-all font-extrabold text-sm whitespace-nowrap ${
-                isCheckedIn ? 'bg-white text-orange-500' : isDayCompleted ? 'bg-slate-50/50 text-slate-400 cursor-not-allowed' : 'bg-white text-indigo-600'
-              }`}
-            >
-               {isActionLoading ? (
-                 <Loader2 className="w-4 h-4 animate-spin" />
-               ) : (
-                 <div className={`p-1 px-1.5 rounded-full ${isCheckedIn ? 'bg-orange-50' : isDayCompleted ? 'bg-slate-100' : 'bg-indigo-50 dark:bg-indigo-100'}`}>
-                   <MapPin className="w-4 h-4" />
-                 </div>
-               )}
-               <span>{isCheckedIn ? 'Check Out' : isDayCompleted ? 'Closed' : 'Check In'}</span>
-            </button>
+            <div className="flex flex-col items-center p-3 bg-white/5 rounded-3xl border border-white/10">
+              <p className="text-indigo-200 text-[9px] font-bold uppercase tracking-widest mb-1">Check Out</p>
+              <div className="flex items-center gap-2">
+                <LogOut className="w-3 h-3 text-rose-400" />
+                <span className="text-lg font-bold">{todayRecord?.checkOut || '--:--'}</span>
+              </div>
+            </div>
           </div>
+
+          <button 
+            onClick={handleAction}
+            disabled={isActionLoading || isDayCompleted}
+            className={`w-full py-4 px-6 rounded-[24px] flex items-center justify-center gap-3 shadow-2xl dark:shadow-none active:scale-95 transition-all font-black text-sm uppercase tracking-widest ${
+              isCheckedIn 
+                ? 'bg-rose-500 text-white hover:bg-rose-600' 
+                : isDayCompleted 
+                  ? 'bg-slate-200/20 text-slate-300 cursor-not-allowed border border-white/10' 
+                  : 'bg-white text-indigo-600 hover:bg-slate-50'
+            }`}
+          >
+             {isActionLoading ? (
+               <Loader2 className="w-5 h-5 animate-spin" />
+             ) : (
+               <MapPin className="w-5 h-5" />
+             )}
+             <span>{isCheckedIn ? 'Check Out Now' : isDayCompleted ? 'Shift Completed' : 'Check In Now'}</span>
+          </button>
+
+          {isCheckedIn && (
+            <p className="mt-4 text-[10px] font-bold text-indigo-100 flex items-center gap-1.5 animate-pulse">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+              Shift in progress
+            </p>
+          )}
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-4 gap-2 sm:gap-4">
+      <div className="grid grid-cols-4 gap-2 sm:gap-4 px-1">
         {quickActions.map((action, idx) => (
           <button 
             key={idx} 
-            onClick={() => handleActionWithHaptic(action.tab)}
+            onClick={() => handleActionWithHaptic(action.tab, (action as any).subTab)}
             className="flex flex-col items-center gap-2 group min-w-0"
           >
-            <div className={`p-4 rounded-2xl ${action.color} dark:bg-opacity-10 transition-all duration-300 group-active:scale-90 shadow-sm border border-slate-100 dark:border-slate-800`}>
-              <action.icon className="w-5 h-5 sm:w-6 sm:h-6" />
+            <div className={`w-full aspect-square flex items-center justify-center rounded-3xl ${action.color} dark:bg-opacity-10 transition-all duration-300 group-active:scale-90 shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800`}>
+              <action.icon className="w-6 h-6" />
             </div>
-            <span className="text-[9px] sm:text-[10px] text-center font-bold text-slate-700 dark:text-slate-300 leading-tight truncate w-full px-1">
+            <span className="text-[10px] text-center font-bold text-slate-700 dark:text-slate-300 leading-tight truncate w-full px-1">
               {action.label}
             </span>
           </button>
@@ -325,29 +340,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
 
       {/* Monthly Overview Summary */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white">This Month Overview</h2>
-          <button className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-            May 2024 <ChevronRight className="w-3 h-3" />
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
+        <div className="flex justify-between items-center mb-6 px-1">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">This Month Summary</h2>
+          <button 
+            onClick={() => onNavigate('attendance')}
+            className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 transition-colors uppercase tracking-wider"
+          >
+            {monthYear} <ChevronRight className="w-3 h-3" />
           </button>
         </div>
 
-        <div className="flex justify-around items-center">
+        <div className="grid grid-cols-4 gap-4">
           {[
-            { label: 'Present', value: stats?.present ?? 0, color: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', iconColor: 'bg-emerald-500' },
-            { label: 'Late', value: stats?.late ?? 0, color: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400', iconColor: 'bg-amber-500' },
-            { label: 'Absent', value: stats?.absent ?? 0, color: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400', iconColor: 'bg-red-500' },
-            { label: 'Leave', value: stats?.leave ?? 0, color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400', iconColor: 'bg-indigo-500' },
+            { label: 'Present', value: stats?.present ?? 0, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-500/10' },
+            { label: 'Late', value: stats?.late ?? 0, color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-500/10' },
+            { label: 'Absent', value: stats?.absent ?? 0, color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-50 dark:bg-rose-500/10' },
+            { label: 'Leave', value: stats?.leave ?? 0, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50 dark:bg-indigo-500/10' },
           ].map((stat, idx) => (
             <div key={idx} className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-3 ${stat.color} relative`}>
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] z-10 ${stat.iconColor}`}>
-                   ✓
-                </div>
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${stat.bgColor} ${stat.color}`}>
+                <span className="text-lg font-bold">{stat.value}</span>
               </div>
-              <span className="text-base font-bold text-slate-900 dark:text-slate-100 mb-0.5">{stat.value}</span>
-              <span className={`text-[10px] font-bold ${stat.color.split(' ')[1]}`}>{stat.label}</span>
+              <span className={`text-[10px] font-bold uppercase tracking-tighter ${stat.color}`}>{stat.label}</span>
             </div>
           ))}
         </div>
@@ -408,24 +423,38 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       {/* Announcements */}
-      <div className="p-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4">
+      <div className="p-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex flex-col gap-4 mb-6">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">Announcements</h2>
-          <button className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">View All</button>
         </div>
         
-        {announcements.map((ann, idx) => (
-          <div key={idx} className="flex items-center gap-4 group cursor-pointer border-b border-slate-50 dark:border-slate-800 last:border-0 pb-3 last:pb-0">
+        {announcements.length > 0 ? announcements.map((ann, idx) => (
+          <div 
+            key={idx} 
+            onClick={() => {
+              onOpenDetail({
+                title: ann.title,
+                content: ann.content,
+                date: ann.date,
+                category: ann.category,
+                type: 'announcement'
+              });
+              haptics.impact();
+            }}
+            className="flex items-center gap-4 group border-b border-slate-50 dark:border-slate-800 last:border-0 pb-3 last:pb-0 cursor-pointer active:scale-[0.98] transition-transform"
+          >
             <div className={`p-3 rounded-2xl ${idx % 2 === 0 ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
               <Bell className="w-5 h-5" />
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-[11px] font-bold text-slate-900 dark:text-slate-100 mb-1 truncate uppercase tracking-tight">{ann.title}</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{ann.content}</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 line-clamp-1">{ann.content}</p>
             </div>
-            <ArrowRight className="w-4 h-4 text-slate-200 dark:text-slate-700 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
+            <ArrowRight className="w-4 h-4 text-slate-200 dark:text-slate-700 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors shrink-0" />
           </div>
-        ))}
+        )) : (
+          <p className="text-[10px] text-slate-400 text-center py-4">No active announcements</p>
+        )}
       </div>
     </div>
   );

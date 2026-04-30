@@ -1,36 +1,35 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 
-const LoginHistory = sequelize.define('LoginHistory', {
+const Organization = sequelize.define('Organization', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
-  userId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-  },
-  device: {
+  name: {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  location: {
+  slug: {
     type: DataTypes.STRING,
+    unique: true,
+    allowNull: false,
   },
-  ip: {
+  logo: {
     type: DataTypes.STRING,
+    allowNull: true,
   },
-  userAgent: {
-    type: DataTypes.TEXT,
+  settings: {
+    type: DataTypes.JSON,
+    defaultValue: {},
   },
-  deviceId: {
+  plan: {
     type: DataTypes.STRING,
+    defaultValue: 'Free',
   },
-  status: {
-    type: DataTypes.STRING,
-    defaultValue: 'Success',
-  }
+}, {
+  timestamps: true,
 });
 
-export default LoginHistory;
+export default Organization;

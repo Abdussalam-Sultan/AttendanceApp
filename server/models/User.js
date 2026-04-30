@@ -87,6 +87,11 @@ const User = sequelize.define('User', {
   securitySettings: {
     type: DataTypes.JSON,
   },
+  deviceId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
+  },
 }, {
   hooks: {
     beforeSave: async (user) => {

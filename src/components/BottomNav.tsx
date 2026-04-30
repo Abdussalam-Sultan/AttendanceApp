@@ -51,40 +51,42 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-around items-center px-4 pt-2 pb-6 z-50 transition-all shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.05)]">
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-100 dark:border-slate-800 grid grid-cols-5 items-center px-2 pt-2 pb-5 z-50 transition-all shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)] dark:shadow-none">
       {tabs.map((tab) => (
         tab.isAction ? (
-          <button
-            key="global-action"
-            onClick={handleAction}
-            disabled={isDayCompleted || isLoading}
-            className={`flex flex-col items-center justify-center relative -translate-y-4 transition-all duration-500 rounded-full p-0.5 ${
-              isDayCompleted ? 'opacity-50 grayscale' : 'active:scale-95'
-            }`}
-          >
-            <div className={`p-4 rounded-full shadow-2xl transition-all duration-500 border-4 border-white dark:border-slate-900 ${
-              isCheckedIn 
-                ? 'bg-rose-500 shadow-rose-200 dark:shadow-none' 
-                : 'bg-indigo-600 shadow-indigo-200 dark:shadow-none'
-            }`}>
-              {isLoading ? (
-                <Loader2 className="w-6 h-6 text-white animate-spin" />
-              ) : (
-                <tab.icon className="w-6 h-6 text-white" />
-              )}
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-widest mt-1 ${
-              isCheckedIn ? 'text-rose-600' : 'text-indigo-600'
-            }`}>
-              {tab.label}
-            </span>
-          </button>
+          <div key="global-action-container" className="flex justify-center relative">
+            <button
+              key="global-action"
+              onClick={handleAction}
+              disabled={isDayCompleted || isLoading}
+              className={`flex flex-col items-center justify-center relative -translate-y-6 transition-all duration-500 rounded-full p-0.5 ${
+                isDayCompleted ? 'opacity-50 grayscale' : 'active:scale-90'
+              }`}
+            >
+              <div className={`p-4 rounded-full shadow-xl dark:shadow-none transition-all duration-500 border-4 border-white dark:border-slate-900 ${
+                isCheckedIn 
+                  ? 'bg-rose-500 shadow-rose-200 dark:shadow-none' 
+                  : 'bg-indigo-600 shadow-indigo-200 dark:shadow-none'
+              }`}>
+                {isLoading ? (
+                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                ) : (
+                  <tab.icon className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <span className={`text-[10px] font-black uppercase tracking-widest mt-1 absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap ${
+                isCheckedIn ? 'text-rose-600' : 'text-indigo-600'
+              }`}>
+                {tab.label}
+              </span>
+            </button>
+          </div>
         ) : (
           <button
             id={`nav-tab-${tab.id}`}
             key={tab.id}
             onClick={() => handleTabClick(tab.id as TabType)}
-            className="flex flex-col items-center justify-center relative transition-all duration-300"
+            className="flex flex-col items-center justify-center relative transition-all duration-300 py-1"
           >
             <tab.icon
               className={`w-5 h-5 mb-1 transition-colors duration-200 ${

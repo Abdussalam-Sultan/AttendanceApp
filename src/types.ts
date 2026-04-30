@@ -21,6 +21,7 @@ export interface User {
   manager?: string;
   branchId?: string;
   branch?: Branch;
+  deviceId?: string | null;
 }
 
 export interface Branch {
@@ -41,6 +42,13 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   lateMinutes?: number;
   isOfflineSync?: boolean;
+  user?: {
+    name: string;
+    employeeId: string;
+    avatar?: string;
+  };
+  branchName?: string;
+  departmentName?: string;
 }
 
 export interface LeaveRequest {

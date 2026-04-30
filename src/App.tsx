@@ -13,6 +13,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { OnboardingView } from './components/OnboardingView';
 import { LoginView } from './components/LoginView';
 import { NotificationOverlay } from './components/NotificationOverlay';
+import { DetailOverlay } from './components/DetailOverlay';
 import { AnimatePresence, motion } from 'motion/react';
 import { api } from './services/api';
 import { storage } from './services/storage';
@@ -33,6 +34,7 @@ export default function App() {
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [attendanceSubTab, setAttendanceSubTab] = useState<'Logs' | 'Calendar' | 'Summary'>('Logs');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(!!storage.get(storage.KEYS.AUTH_TOKEN));
@@ -41,6 +43,15 @@ function AppContent() {
   const [theme, setTheme] = useState<'light' | 'dark'>(storage.get(storage.KEYS.THEME) || 'light');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [selectedDetail, setSelectedDetail] = useState<{
+    show: boolean;
+    title: string;
+    content: string;
+    date?: string;
+    category?: string;
+    type?: string;
+    iconType?: string;
+  }>({ show: false, title: '', content: '' });
   const [todayRecord, setTodayRecord] = useState<any>(null);
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
 
@@ -220,7 +231,14 @@ function AppContent() {
     switch (activeTab) {
       case 'home': return (
         <HomeView 
-          onNavigate={(tab: TabType) => setActiveTab(tab)} 
+          onNavigate={(tab: TabType, subTab?: any) => {
+            setActiveTab(tab);
+            if (tab === 'attendance' && subTab) {
+              setAttendanceSubTab(subTab);
+            } else if (tab === 'attendance') {
+              setAttendanceSubTab('Logs');
+            }
+          }} 
           onLogout={handleLogout} 
           showNotifications={showNotifications} 
           setShowNotifications={setShowNotifications} 
@@ -229,9 +247,10 @@ function AppContent() {
           onRefreshData={refreshAttendance}
           handleGlobalAction={handleGlobalCheckInOut}
           isActionLoading={isAttendanceLoading}
+          onOpenDetail={(item) => setSelectedDetail({ show: true, ...item })}
         />
       );
-      case 'attendance': return <AttendanceView />;
+      case 'attendance': return <AttendanceView initialTab={attendanceSubTab} />;
       case 'leave': return <LeaveView />;
       case 'profile': return (
         <ProfileView 
@@ -313,6 +332,12 @@ function AppContent() {
             setShowNotifications(false);
             refreshNotifications();
           }} 
+          onOpenDetail={(item) => setSelectedDetail({ show: true, ...item, type: 'notification' })}
+        />
+
+        <DetailOverlay 
+          {...selectedDetail}
+          onClose={() => setSelectedDetail(prev => ({ ...prev, show: false }))}
         />
 
         {onboardingComplete && isLoggedIn && (

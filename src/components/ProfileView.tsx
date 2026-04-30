@@ -294,7 +294,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
         >
           <Bell className="w-6 h-6 text-slate-900 dark:text-slate-100" />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-50 dark:border-slate-900 scale-110 shadow-sm shadow-red-200"></span>
+            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-50 dark:border-slate-900 scale-110 shadow-sm shadow-red-200 dark:shadow-none"></span>
           )}
         </button>
       </div>
@@ -304,7 +304,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </div>
 
       {/* Profile Card */}
-      <div className="relative bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-slate-900 overflow-hidden rounded-[40px] shadow-sm border border-white dark:border-slate-800 p-6 pt-8 pb-10">
+      <div className="relative bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-slate-900 overflow-hidden rounded-[40px] shadow-sm dark:shadow-none border border-white dark:border-slate-800 p-6 pt-8 pb-10">
          {/* Background Decoration */}
          <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-200/20 dark:bg-indigo-500/10 rounded-full blur-3xl"></div>
          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/10 dark:bg-indigo-900/10 rounded-full blur-2xl font-display"></div>
@@ -320,7 +320,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
               />
               <div 
                 onClick={triggerFileInput}
-                className="w-28 h-28 rounded-[32px] overflow-hidden border-4 border-white dark:border-slate-800 shadow-soft group cursor-pointer transition-all active:scale-95 relative bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
+                className="w-28 h-28 rounded-[32px] overflow-hidden border-4 border-white dark:border-slate-800 shadow-soft dark:shadow-none group cursor-pointer transition-all active:scale-95 relative bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
               >
                 {user.avatar ? (
                   <img src={user.avatar} alt={user.name} className={`w-full h-full object-cover transition-opacity ${isUploading ? 'opacity-30' : 'opacity-100'}`} referrerPolicy="no-referrer" />
@@ -338,7 +338,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
               </div>
               <button 
                 onClick={triggerFileInput}
-                className="absolute -bottom-1.5 -right-1.5 w-9 h-9 bg-indigo-600 text-white rounded-full flex items-center justify-center border-4 border-white dark:border-slate-800 shadow-lg active:scale-90 transition-transform"
+                className="absolute -bottom-1.5 -right-1.5 w-9 h-9 bg-indigo-600 text-white rounded-full flex items-center justify-center border-4 border-white dark:border-slate-800 shadow-lg dark:shadow-none active:scale-90 transition-transform"
               >
                 <Camera className="w-4.5 h-4.5" />
               </button>
@@ -347,7 +347,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
             <div className="flex-1 flex flex-col items-center md:items-start">
                <div className="flex flex-col md:flex-row items-center md:items-center gap-4 mb-3">
                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center md:text-left">{user.name}</h2>
-                 <button className="flex items-center gap-1.5 px-4 py-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-bold shadow-sm border border-indigo-50 dark:border-slate-700 hover:bg-indigo-50 transition-all">
+                 <button className="flex items-center gap-1.5 px-4 py-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-bold shadow-sm dark:shadow-none border border-indigo-50 dark:border-slate-700 hover:bg-indigo-50 transition-all">
                    <Edit3 className="w-3.5 h-3.5" /> Edit Profile
                  </button>
                </div>
@@ -373,7 +373,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </div>
 
       {/* Info Badges */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Employee ID', value: user.employeeId, icon: CreditCard, color: 'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' },
           { label: 'Department', value: user.department.slice(0, 11), icon: Users2, color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
@@ -382,7 +382,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
         ].map((info, idx) => (
           <div key={idx} className="flex flex-col items-center gap-2 group cursor-pointer relative">
             {idx < 3 && <div className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 h-10 w-px bg-slate-100 dark:bg-slate-800"></div>}
-            <div className={`p-3 rounded-2xl ${info.color} transition-all duration-300 group-hover:scale-110 shadow-sm border border-white dark:border-slate-800`}>
+            <div className={`p-3 rounded-2xl ${info.color} transition-all duration-300 group-hover:scale-110 shadow-sm dark:shadow-none border border-white dark:border-slate-800`}>
               <info.icon className="w-5 h-5 mx-auto" />
             </div>
             <div className="flex flex-col items-center">
@@ -394,14 +394,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </div>
 
       {/* Menu Options */}
-      <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
         {menuItems.map((item: any, idx) => (
           <button 
             key={idx} 
             onClick={item.onClick}
             className="w-full flex items-center gap-4 p-5 text-left hover:bg-slate-50 dark:hover:bg-white/5 active:bg-slate-100 dark:active:bg-white/10 transition-colors group"
           >
-            <div className={`p-3.5 rounded-2xl ${item.color} transition-transform group-hover:scale-105 shadow-sm`}>
+            <div className={`p-3.5 rounded-2xl ${item.color} transition-transform group-hover:scale-105 shadow-sm dark:shadow-none`}>
               <item.icon className="w-6 h-6" />
             </div>
             <div className="flex-1">

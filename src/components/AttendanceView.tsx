@@ -18,12 +18,16 @@ import {
 } from 'date-fns';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
-export const AttendanceView: React.FC = () => {
+interface AttendanceViewProps {
+  initialTab?: 'Logs' | 'Calendar' | 'Summary';
+}
+
+export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) => {
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'Logs' | 'Calendar' | 'Summary'>('Logs');
+  const [activeTab, setActiveTab] = useState<'Logs' | 'Calendar' | 'Summary'>(initialTab || 'Logs');
   const [viewDate, setViewDate] = useState(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -193,7 +197,7 @@ export const AttendanceView: React.FC = () => {
             <div 
               key={record.id} 
               id={`record-${record.id}`}
-              className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group overflow-hidden"
+              className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex flex-col gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group overflow-hidden"
             >
               <div className="flex gap-4">
                 <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 min-w-[64px] transition-colors group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/5">
@@ -367,7 +371,7 @@ export const AttendanceView: React.FC = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="mt-6 p-6 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm"
+              className="mt-6 p-6 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -463,7 +467,7 @@ export const AttendanceView: React.FC = () => {
             </motion.div>
           ) : (
             <div className="mt-6 p-8 bg-slate-50 dark:bg-slate-800/30 rounded-[32px] border-2 border-dashed border-slate-100 dark:border-slate-800/50 flex flex-col items-center justify-center text-center">
-               <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm mb-4">
+               <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm dark:shadow-none mb-4">
                  <CalendarIcon className="w-6 h-6 text-slate-300" />
                </div>
                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Select a day to view details</p>
@@ -495,7 +499,7 @@ export const AttendanceView: React.FC = () => {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
         {/* Pie Chart Card */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden relative">
            <div className="flex justify-between items-center mb-8 relative z-10">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{viewMode === 'all' ? 'Team Performance' : 'Attendance Mix'}</h3>
@@ -562,7 +566,7 @@ export const AttendanceView: React.FC = () => {
         </div>
 
         {/* Efficiency Milestone */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
            <div className="flex items-center gap-4 mb-6">
               <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl text-emerald-600 dark:text-emerald-400">
                 <TrendingUp className="w-6 h-6" />
@@ -680,7 +684,7 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setViewMode('personal')}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               viewMode === 'personal' 
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' 
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm dark:shadow-none' 
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           >
@@ -691,7 +695,7 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setViewMode('all')}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               viewMode === 'all' 
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' 
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm dark:shadow-none' 
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           >
@@ -752,7 +756,7 @@ export const AttendanceView: React.FC = () => {
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] shadow-2xl z-50 p-4 grid grid-cols-3 gap-2 overflow-hidden"
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] shadow-2xl dark:shadow-none z-50 p-4 grid grid-cols-3 gap-2 overflow-hidden"
                 >
                   {Array.from({ length: 12 }).map((_, i) => {
                     const date = new Date(viewDate.getFullYear(), i, 1);
@@ -766,7 +770,7 @@ export const AttendanceView: React.FC = () => {
                           }}
                           className={`py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-tight ${
                             isSelected 
-                              ? 'bg-indigo-600 text-white shadow-md' 
+                              ? 'bg-indigo-600 text-white shadow-md dark:shadow-none' 
                               : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
                           }`}
                         >

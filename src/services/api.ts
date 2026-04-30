@@ -3,6 +3,15 @@ import { notificationService } from './notifications';
 
 const isOnline = () => navigator.onLine;
 
+const getDeviceId = () => {
+  let deviceId = localStorage.getItem('doorlog_device_id');
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem('doorlog_device_id', deviceId);
+  }
+  return deviceId;
+};
+
 const getHeaders = (isMultipart = false) => {
   const token = storage.get(storage.KEYS.AUTH_TOKEN);
   const headers: any = {};
@@ -424,11 +433,12 @@ export const api = {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials)
+      body: JSON.stringify({ ...credentials, deviceId: getDeviceId() })
     });
     
     if (!res.ok) {
-      throw new Error('Invalid credentials');
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Invalid credentials');
     }
 
     const { user, token } = await res.json();
@@ -441,11 +451,12 @@ export const api = {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify({ ...data, deviceId: getDeviceId() })
     });
     
     if (!res.ok) {
-      throw new Error('Registration failed');
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Registration failed');
     }
 
     const { user, token } = await res.json();
@@ -510,6 +521,15 @@ export const api = {
     storage.save(storage.KEYS.USER, null);
     storage.save(storage.KEYS.AUTH_TOKEN, null);
     return { success: true };
+  },
+
+  async unbindUserDevice(userId: string) {
+    const res = await fetch(`/api/admin/users/${userId}/unbind-device`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Unbind failed');
+    return await res.json();
   },
 
   async getNotifications() {

@@ -428,6 +428,26 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleUnbindDevice = async (userId: string, userName: string) => {
+    const confirmed = await confirm(
+      "Unbind Device",
+      `Are you sure you want to unbind the device for ${userName}? They will be able to log in from a new device.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.unbindUserDevice(userId);
+      toast("Device unbound successfully", "success");
+      // Update local state if needed
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, deviceId: null } : u));
+      if (selectedUser?.id === userId) {
+        setSelectedUser({ ...selectedUser, deviceId: null });
+      }
+    } catch (error) {
+      toast("Failed to unbind device", "error");
+    }
+  };
+
   const handleDownloadReport = () => {
     if (filteredRecords.length === 0) {
       toast("No records to download", "warning");
@@ -512,121 +532,70 @@ export const AdminDashboard: React.FC = () => {
   const absentLeave = (stats?.absent || 0) + (stats?.leave || 0);
 
   const renderLauncher = () => (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
-      {/* Dynamic Summary Cockpit */}
-      <div className="bg-slate-950 p-8 rounded-[48px] text-white relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-[100px]" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-emerald-600/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-[80px]" />
-        
-        <div className="relative z-10">
-          <div className="flex justify-between items-center mb-8">
-            <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full">
-               <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Live Insights</span>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Stats Grid - Moved inside launcher for a cleaner cockpit feel */}
+      <div className="grid grid-cols-2 gap-4">
+        {[
+          { label: 'Staff', value: totalEmployees, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+          { label: 'Active', value: activeToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'Late', value: lateCount, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
+          { label: 'Absent', value: absentLeave, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' }
+        ].map((stat, i) => (
+          <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-xl ${stat.bg} dark:bg-opacity-10 flex items-center justify-center`}>
+              <stat.icon className={`w-4 h-4 ${stat.color}`} />
             </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Node: {user?.branch?.code || 'GLB-01'}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-8">
             <div>
-               <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] mb-2">Total Workforce</p>
-               <div className="flex items-baseline gap-2">
-                 <span className="text-5xl font-black font-display tracking-tighter leading-none">{totalEmployees}</span>
-                 <span className="text-sm font-bold text-slate-500 uppercase">Staff</span>
-               </div>
-            </div>
-            <div className="flex flex-col justify-end">
-               <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Ratio</p>
-                  <span className="text-[10px] font-black text-indigo-400">{totalEmployees > 0 ? Math.round((activeToday/totalEmployees)*100) : 0}%</span>
-               </div>
-               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${totalEmployees > 0 ? (activeToday/totalEmployees)*100 : 0}%` }}
-                    className="h-full bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.5)]"
-                  />
-               </div>
+              <p className="text-sm font-black text-slate-900 dark:text-white leading-none mb-0.5">{stat.value}</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{stat.label}</p>
             </div>
           </div>
-
-          <div className="grid grid-cols-3 gap-4 mt-8 pt-8 border-t border-white/5">
-             {[
-               { label: 'Present', val: activeToday, color: 'text-emerald-400', icon: CheckCircle2 },
-               { label: 'Late', val: lateCount, color: 'text-orange-400', icon: Clock },
-               { label: 'Out', val: absentLeave, color: 'text-red-400', icon: AlertTriangle }
-             ].map((s, i) => (
-               <div key={i} className="space-y-1">
-                 <div className="flex items-center gap-1.5 opacity-50">
-                   <s.icon className={`w-3 h-3 ${s.color}`} />
-                   <span className="text-[9px] font-bold uppercase tracking-widest">{s.label}</span>
-                 </div>
-                 <p className="text-xl font-black">{s.val}</p>
-               </div>
-             ))}
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Main Operations Grid */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-[0.3em]">Management Hub</h3>
-          <div className="h-px bg-slate-100 dark:bg-slate-800 flex-1 ml-4" />
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4">
+      {/* Team Operations Group */}
+      <div className="space-y-4">
+        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Team Operations</h3>
+        <div className="grid grid-cols-2 gap-3">
           {[
-            { id: 'workforce', label: 'Attendance', icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Live monitoring', accent: 'emerald' },
-            { id: 'approvals', label: 'Approvals', icon: ShieldCheck, color: 'text-indigo-600', bg: 'bg-indigo-50', desc: 'Leave requests', badge: pendingLeaves.length, accent: 'indigo' },
-            { id: 'employees', label: 'Staff Files', icon: User, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Employee records', accent: 'amber' },
-            { id: 'analytics', label: 'Performance', icon: Navigation, color: 'text-purple-600', bg: 'bg-purple-50', desc: 'Trends & reports', accent: 'purple' },
+            { id: 'workforce', label: 'Attendance', icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Live status' },
+            { id: 'approvals', label: 'Requests', icon: ShieldCheck, color: 'text-indigo-600', bg: 'bg-indigo-50', desc: 'Leave center', badge: pendingLeaves.length },
+            { id: 'employees', label: 'Employees', icon: User, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Member files' },
           ].map(module => (
             <button
               key={module.id}
               onClick={() => {
-                if(module.id === 'analytics') {
-                   // Add a visual hint later or just navigate
-                }
                 setActiveTab(module.id as any);
                 setIsLauncherOpen(false);
               }}
-              className="group relative h-44 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] p-6 text-left hover:shadow-2xl hover:shadow-indigo-500/10 transition-all flex flex-col justify-between overflow-hidden"
+              className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-indigo-500/5 dark:hover:shadow-none transition-all group"
             >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full translate-x-8 -translate-y-8 blur-2xl group-hover:bg-indigo-500/10 transition-all" />
-              
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
-                <module.icon className={`w-6 h-6 ${module.color}`} />
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 group-hover:scale-110 transition-transform`}>
+                <module.icon className={`w-4 h-4 ${module.color}`} />
               </div>
-              
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">{module.label}</p>
-                  {module.badge > 0 && (
-                    <span className="px-2 py-0.5 bg-red-500 text-white text-[8px] font-black rounded-full shadow-lg shadow-red-200">
-                      {module.badge}
-                    </span>
-                  )}
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">{module.label}</p>
+                  {module.badge > 0 ? (
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                  ) : null}
                 </div>
-                <p className="text-[10px] font-medium text-slate-400 group-hover:text-slate-500 leading-tight">{module.desc}</p>
+                <p className="text-[9px] font-medium text-slate-400">{module.desc}</p>
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Corporate Structure Group */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-[0.3em]">Organization</h3>
-          <div className="h-px bg-slate-100 dark:bg-slate-800 flex-1 ml-4" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
+      {/* Organization Group */}
+      <div className="space-y-4">
+        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Organization</h3>
+        <div className="grid grid-cols-2 gap-3">
           {[
-            { id: 'branches', label: 'Branches', icon: Building2, role: 'Admin', color: 'text-slate-600', bg: 'bg-slate-100', desc: 'Region setup' },
-            { id: 'departments', label: 'Departments', icon: Tag, role: 'Admin', color: 'text-slate-600', bg: 'bg-slate-100', desc: 'Org hierarchy' },
-            { id: 'announcements', label: 'Newsroom', icon: Megaphone, role: 'Any', color: 'text-slate-600', bg: 'bg-slate-100', desc: 'Public relations' },
-            { id: 'settings', label: 'System', icon: Settings, role: 'Admin', color: 'text-slate-600', bg: 'bg-slate-100', desc: 'Global policies' },
+            { id: 'branches', label: 'Branches', icon: Building2, role: 'Admin', color: 'text-purple-600', bg: 'bg-purple-50' },
+            { id: 'departments', label: 'Departments', icon: Tag, role: 'Admin', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+            { id: 'announcements', label: 'Newsroom', icon: Megaphone, role: 'Any', color: 'text-blue-600', bg: 'bg-blue-50' },
+            { id: 'settings', label: 'Settings', icon: Settings, role: 'Admin', color: 'text-slate-600', bg: 'bg-slate-100' },
           ].filter(m => m.role === 'Any' || user?.role === m.role).map(module => (
             <button
               key={module.id}
@@ -634,15 +603,12 @@ export const AdminDashboard: React.FC = () => {
                 setActiveTab(module.id as any);
                 setIsLauncherOpen(false);
               }}
-              className="flex items-center gap-4 p-5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[28px] text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group"
+              className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-slate-500/5 dark:hover:shadow-none transition-all group"
             >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 group-hover:scale-110 transition-transform`}>
-                <module.icon className={`w-5 h-5 ${module.color}`} />
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10`}>
+                <module.icon className={`w-4 h-4 ${module.color}`} />
               </div>
-              <div className="overflow-hidden">
-                <p className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-tighter truncate">{module.label}</p>
-                <p className="text-[9px] font-medium text-slate-400 truncate tracking-tight">{module.desc}</p>
-              </div>
+              <p className="text-[11px] font-bold text-slate-900 dark:text-white">{module.label}</p>
             </button>
           ))}
         </div>
@@ -715,7 +681,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8 flex flex-col"
+              className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl dark:shadow-none p-8 flex flex-col"
             >
               <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto mb-8"></div>
               <div className="flex justify-between items-center mb-6">
@@ -851,7 +817,7 @@ export const AdminDashboard: React.FC = () => {
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="mt-2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 overflow-hidden max-h-48 overflow-y-auto z-[200] relative"
+                        className="mt-2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl dark:shadow-none border border-slate-100 dark:border-slate-700 overflow-hidden max-h-48 overflow-y-auto z-[200] relative"
                       >
                         {locationResults.map((res, i) => (
                           <button
@@ -957,7 +923,7 @@ export const AdminDashboard: React.FC = () => {
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Tag className="w-5 h-5 text-rose-600" /> New Department
+                  <Tag className="w-5 h-5 text-indigo-600" /> New Department
                 </h2>
                 <button onClick={() => setShowDeptModal(false)}>
                   <X className="w-6 h-6 text-slate-400" />
@@ -999,7 +965,7 @@ export const AdminDashboard: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={deptLoading}
-                  className="w-full bg-rose-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-50 mt-4"
+                  className="w-full bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-50 mt-4"
                 >
                   {deptLoading ? 'Creating...' : 'Create Department'}
                 </button>
@@ -1024,7 +990,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
+              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl dark:shadow-none p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -1199,7 +1165,7 @@ export const AdminDashboard: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={userUpdateLoading}
-                  className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl"
+                  className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl dark:shadow-none"
                 >
                   {userUpdateLoading ? <Clock className="w-4 h-4 animate-spin mx-auto" /> : (editingUser.isNew ? 'Create New Profile' : 'Update Personnel File')}
                 </button>
@@ -1228,7 +1194,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-t-[40px] shadow-2xl overflow-y-auto no-scrollbar"
+              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-t-[40px] shadow-2xl dark:shadow-none overflow-y-auto no-scrollbar"
             >
               <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 px-8 py-6 flex justify-between items-center border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-4">
@@ -1257,7 +1223,7 @@ export const AdminDashboard: React.FC = () => {
 
               <div className="p-8 space-y-8">
                 {/* Employee Card */}
-                <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm dark:shadow-none">
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee ID</p>
@@ -1286,7 +1252,7 @@ export const AdminDashboard: React.FC = () => {
                 {/* Contact Section */}
                 <div className="space-y-4">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Contact Details</h3>
-                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-2 space-y-1">
+                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-2 shadow-sm dark:shadow-none space-y-1">
                     {[
                       { icon: Mail, label: 'Email Address', value: selectedUser.email },
                       { icon: MapPin, label: 'Resident Address', value: selectedUser.address || 'Manchester, UK' },
@@ -1335,6 +1301,34 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Device Binding Section */}
+                <div className="space-y-4">
+                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">App Security</h3>
+                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${selectedUser.deviceId ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-400'}`}>
+                          <Navigation className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Device Binding</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">
+                            {selectedUser.deviceId ? 'Account Bound to Active Device' : 'No Device Bound'}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedUser.deviceId && (
+                        <button 
+                          onClick={() => handleUnbindDevice(selectedUser.id, selectedUser.name)}
+                          className="px-4 py-2 bg-red-50 dark:bg-red-500/10 text-[10px] font-bold uppercase tracking-widest text-red-500 rounded-xl active:scale-95 transition-all"
+                        >
+                          Unbind Device
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 
                 <div className="h-4" />
               </div>
@@ -1358,7 +1352,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="fixed inset-6 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+              className="fixed inset-6 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl dark:shadow-none overflow-hidden border border-slate-100 dark:border-slate-800"
             >
               <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                 <div className="flex items-center gap-3">
@@ -1379,7 +1373,7 @@ export const AdminDashboard: React.FC = () => {
                     <img 
                       src={viewingAttachment} 
                       alt="Attachment Preview"
-                      className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
+                      className="max-w-full max-h-full object-contain rounded-xl shadow-lg dark:shadow-none"
                       referrerPolicy="no-referrer"
                     />
                   ) : viewingAttachment.match(/\.pdf$/i) ? (
@@ -1399,7 +1393,7 @@ export const AdminDashboard: React.FC = () => {
                       </p>
                       <button 
                         onClick={() => window.open(viewingAttachment, '_blank')}
-                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg"
+                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg dark:shadow-none"
                       >
                         Open In New Tab
                       </button>
@@ -1425,7 +1419,7 @@ export const AdminDashboard: React.FC = () => {
                     }
                     setViewingAttachment(null);
                   }}
-                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-xl"
+                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-xl dark:shadow-none"
                  >
                    {viewingAttachment.startsWith('http') ? 'View Full File' : 'Download File'}
                  </button>
@@ -1469,7 +1463,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {['workforce', 'departments', 'branches'].includes(activeTab) && (
-                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
                     <div className="flex items-center gap-3 px-3 border-r border-slate-50 dark:border-slate-800 group">
                       <div className="p-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
                         <Clock className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
@@ -1495,7 +1489,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {activeTab === 'workforce' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden">
           <div className="p-5 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Real-time Attendance</h2>
             <div className="flex items-center gap-2">
@@ -1503,7 +1497,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => setCompareDepts(!compareDepts)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
                   compareDepts 
-                    ? 'bg-rose-600 text-white' 
+                    ? 'bg-indigo-600 text-white' 
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600'
                 }`}
               >
@@ -1538,7 +1532,7 @@ export const AdminDashboard: React.FC = () => {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
                       selectedDeptsForComp.includes(dept.id)
-                        ? 'bg-rose-600 text-white shadow-sm'
+                        ? 'bg-indigo-600 text-white shadow-sm'
                         : 'bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-slate-600'
                     }`}
                   >
@@ -1550,7 +1544,7 @@ export const AdminDashboard: React.FC = () => {
                 )}
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
@@ -1675,7 +1669,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex flex-col gap-3">
             {pendingLeaves.length > 0 ? (
               pendingLeaves.map((req, i) => (
-                <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-100">
+                <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none transition-all hover:border-indigo-100">
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden">
@@ -1726,7 +1720,7 @@ export const AdminDashboard: React.FC = () => {
                     <button 
                       onClick={() => handleLeaveAction(req.id, 'Approved')}
                       disabled={updatingId === req.id}
-                      className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-emerald-100"
+                      className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-emerald-100 dark:shadow-none"
                     >
                       {updatingId === req.id ? 'Updating...' : 'Approve'}
                     </button>
@@ -1815,7 +1809,7 @@ export const AdminDashboard: React.FC = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="bg-indigo-600 p-4 rounded-[28px] text-white flex items-center justify-between shadow-2xl shadow-indigo-500/20 sticky top-4 z-30"
+                className="bg-indigo-600 p-4 rounded-[28px] text-white flex items-center justify-between shadow-2xl shadow-indigo-500/20 dark:shadow-none sticky top-4 z-30"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center font-bold text-xs">
@@ -1868,7 +1862,7 @@ export const AdminDashboard: React.FC = () => {
               .map((emp, i) => (
                 <div 
                   key={i} 
-                  className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border ${selectedUserIds.includes(emp.id) ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-slate-100 dark:border-slate-800'} shadow-sm flex items-center gap-4 transition-all`}
+                  className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border ${selectedUserIds.includes(emp.id) ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-slate-100 dark:border-slate-800 shadow-sm'} dark:shadow-none flex items-center gap-4 transition-all`}
                 >
                   <button 
                     onClick={() => toggleUserSelection(emp.id)}
@@ -1889,6 +1883,12 @@ export const AdminDashboard: React.FC = () => {
                       <p className="text-xs font-bold text-slate-900 dark:text-white truncate pr-1">{emp.name}</p>
                       {emp.status === 'Deactivated' && (
                         <span className="shrink-0 px-1.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-500 text-[8px] font-bold uppercase rounded">Deactivated</span>
+                      )}
+                      {emp.deviceId && (
+                        <span className="shrink-0 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 text-[8px] font-bold uppercase rounded flex items-center gap-1">
+                          <Navigation className="w-2 h-2" />
+                          Bound
+                        </span>
                       )}
                     </div>
                     <p className="text-[10px] font-medium text-slate-400 truncate">{emp.role} • {emp.department}</p>
@@ -1941,7 +1941,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex gap-4 min-w-[600px]">
               {branchStats.map((bStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
@@ -1982,7 +1982,7 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="grid gap-4">
             {branches.map((branch, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center justify-between group">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                     <Building2 className="w-6 h-6" />
@@ -2023,7 +2023,7 @@ export const AdminDashboard: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Department Performance</h2>
             <button 
               onClick={() => setShowDeptModal(true)}
-              className="text-[10px] font-bold text-rose-600 uppercase tracking-widest flex items-center gap-1"
+              className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1"
             >
               <Tag className="w-3.5 h-3.5" /> + New Department
             </button>
@@ -2033,10 +2033,10 @@ export const AdminDashboard: React.FC = () => {
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex gap-4 min-w-[600px]">
               {departmentStats.map((dStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600">
+                      <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                         <Tag className="w-5 h-5" />
                       </div>
                       <div>
@@ -2074,9 +2074,9 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="grid gap-4">
             {departments.map((dept, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center justify-between group">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                     <Tag className="w-6 h-6" />
                   </div>
                   <div>
@@ -2120,7 +2120,7 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="flex flex-col gap-3">
             {announcements.map((ann, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm group">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none group">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -2166,7 +2166,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       ) : (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
               <Settings className="w-4 h-4 text-indigo-500" />
               Attendance Policies
@@ -2369,7 +2369,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Quick Action Link to Approvals if not active */}
       {activeTab === 'workforce' && pendingLeaves.length > 0 && (
-        <div className="p-5 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-3xl text-white shadow-lg relative overflow-hidden mt-2">
+        <div className="p-5 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-3xl text-white shadow-lg dark:shadow-none relative overflow-hidden mt-2">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <AlertTriangle className="w-20 h-20" />
           </div>
