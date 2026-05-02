@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { User, Branch } from '../models/associations.js';
+import { User, Branch, Department } from '../models/associations.js';
 
 export const authenticate = async (req, res, next) => {
   try {
@@ -11,7 +11,10 @@ export const authenticate = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
     const user = await User.findByPk(decoded.id, {
-      include: [{ model: Branch, attributes: ['id', 'name', 'location'] }]
+      include: [
+        { model: Branch, attributes: ['id', 'name', 'location'] },
+        { model: Department, attributes: ['id', 'name'] }
+      ]
     });
 
     if (!user) {

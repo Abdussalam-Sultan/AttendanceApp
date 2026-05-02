@@ -6,11 +6,18 @@ import { api } from '../services/api';
 interface NotificationOverlayProps {
   show: boolean;
   onClose: () => void;
-  onOpenDetail: (notif: any) => void;
+  userSettings?: {
+    attendance: boolean;
+    leave: boolean;
+    announcements: boolean;
+    marketing: boolean;
+    [key: string]: any;
+  };
 }
 
-export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, onClose, onOpenDetail }) => {
+export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, onClose, userSettings }) => {
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [selectedNotif, setSelectedNotif] = useState<any | null>(null);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'ALERTS' | 'UPDATES' | 'SYSTEM'>('ALL');
   const [loading, setLoading] = useState(false);
 
@@ -45,8 +52,6 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
   const getNotifConfig = (type: string) => {
     switch (type) {
       case 'POLICY_CHANGE': return { icon: ShieldCheck, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10", category: 'SYSTEM' };
@@ -70,10 +75,20 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
   };
 
   const filteredNotifications = notifications.filter(n => {
+    // 1. Filter by User Settings
+    if (userSettings) {
+      if (n.type === 'ATTENDANCE_STATUS' && !userSettings.attendance) return false;
+      if (n.type === 'LEAVE_STATUS' && !userSettings.leave) return false;
+      if ((n.type === 'ANNOUNCEMENT' || n.type === 'POLICY_CHANGE') && !userSettings.announcements) return false;
+    }
+
+    // 2. Filter by UI Filter Category
     if (activeFilter === 'ALL') return true;
     const config = getNotifConfig(n.type);
     return config.category === activeFilter;
   });
+
+  const unreadCount = filteredNotifications.filter(n => !n.isRead).length;
 
   return (
     <AnimatePresence>
@@ -104,14 +119,14 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
                 {unreadCount > 0 && (
                   <button 
                     onClick={handleMarkAllRead}
-                    className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl active:scale-95 transition-all shadow-sm dark:shadow-none"
+                    className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl active:scale-95 transition-all shadow-sm"
                   >
                     <Check className="w-5 h-5" />
                   </button>
                 )}
                 <button 
                   onClick={onClose}
-                  className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl active:scale-95 transition-all shadow-sm dark:shadow-none"
+                  className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl active:scale-95 transition-all shadow-sm"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -149,22 +164,16 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
                       key={notif.id || i}
                       layoutId={`notif-${notif.id}`}
                       onClick={() => {
-                        onOpenDetail({
-                          title: notif.title,
-                          content: notif.content,
-                          date: notif.createdAt,
-                          iconType: notif.type,
-                          category: 'Notification'
-                        });
+                        setSelectedNotif(notif);
                         if (!notif.isRead) handleMarkRead(notif.id);
                       }}
                       className={`group relative flex gap-4 p-5 rounded-[28px] border transition-all cursor-pointer ${
                         notif.isRead 
                           ? 'bg-white/50 dark:bg-slate-900/30 border-transparent' 
-                          : 'bg-white dark:bg-slate-900 border-indigo-100 dark:border-indigo-500/20 shadow-sm dark:shadow-none active:scale-[0.98]'
+                          : 'bg-white dark:bg-slate-900 border-indigo-100 dark:border-indigo-500/20 shadow-sm active:scale-[0.98]'
                       }`}
                     >
-                      <div className={`w-12 h-12 rounded-2xl ${config.bg} ${config.color} flex items-center justify-center shrink-0 shadow-sm dark:shadow-none`}>
+                      <div className={`w-12 h-12 rounded-2xl ${config.bg} ${config.color} flex items-center justify-center shrink-0 shadow-sm`}>
                         <config.icon className="w-6 h-6" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -186,7 +195,7 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
                         </div>
                       </div>
                       {!notif.isRead && (
-                        <div className="absolute top-6 right-6 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm dark:shadow-none animate-pulse"></div>
+                        <div className="absolute top-6 right-6 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse"></div>
                       )}
                     </motion.div>
                   );
@@ -204,7 +213,7 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
               )}
             </div>
 
-            <div className="px-8 pb-8 pt-4 bg-white dark:bg-slate-900 rounded-t-[40px] shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)] dark:shadow-none">
+            <div className="px-8 pb-8 pt-4 bg-white dark:bg-slate-900 rounded-t-[40px] shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
                <button 
                   onClick={onClose}
                   className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-5 rounded-[24px] active:scale-95 transition-all text-xs uppercase tracking-[0.25em] shadow-xl shadow-slate-200 dark:shadow-none"
@@ -213,6 +222,76 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
                </button>
             </div>
           </motion.div>
+
+          {/* Details Sub-Overlay */}
+          <AnimatePresence>
+            {selectedNotif && (
+              <>
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setSelectedNotif(null)}
+                  className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[210]"
+                />
+                <motion.div 
+                  layoutId={`notif-${selectedNotif.id}`}
+                  className="fixed inset-x-5 top-1/2 -translate-y-1/2 max-h-[70vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl dark:shadow-none p-8 flex flex-col"
+                >
+                  <div className="flex justify-between items-start mb-6">
+                    <div className={`p-4 rounded-3xl ${getNotifConfig(selectedNotif.type).bg} ${getNotifConfig(selectedNotif.type).color} shadow-sm`}>
+                      {React.createElement(getNotifConfig(selectedNotif.type).icon, { className: "w-8 h-8" })}
+                    </div>
+                    <button 
+                      onClick={() => setSelectedNotif(null)}
+                      className="p-2 bg-slate-50 dark:bg-slate-800 text-slate-400 rounded-full hover:text-slate-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                       <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em]">
+                         {selectedNotif.type.replace('_', ' ')}
+                       </span>
+                       <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                         {getTimeAgo(selectedNotif.createdAt)}
+                       </span>
+                    </div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white leading-tight">
+                      {selectedNotif.title}
+                    </h3>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto no-scrollbar py-2">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400 leading-relaxed italic border-l-4 border-indigo-100 dark:border-indigo-500/20 pl-4 py-1">
+                      {selectedNotif.content}
+                    </p>
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-slate-50 dark:border-slate-800 flex gap-4">
+                    <button 
+                      onClick={() => setSelectedNotif(null)}
+                      className="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl active:scale-95 transition-all text-[11px] uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none"
+                    >
+                      Understood
+                    </button>
+                    <button 
+                      onClick={() => {
+                        // In a real app, delete notification
+                        setSelectedNotif(null);
+                      }}
+                      className="p-4 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-2xl hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
+                    >
+                      <Trash2 className="w-6 h-6" />
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </>
       )}
     </AnimatePresence>

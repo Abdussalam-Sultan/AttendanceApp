@@ -10,6 +10,8 @@ export interface User {
   role: 'Admin' | 'Manager' | 'Staff' | string;
   employeeId: string;
   department: string;
+  departmentId?: string;
+  Department?: Department;
   location: string;
   avatar: string;
   phone?: string;
@@ -21,7 +23,11 @@ export interface User {
   manager?: string;
   branchId?: string;
   branch?: Branch;
-  deviceId?: string | null;
+}
+
+export interface Department {
+  id: string;
+  name: string;
 }
 
 export interface Branch {

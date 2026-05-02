@@ -24,9 +24,6 @@ const LoginHistory = sequelize.define('LoginHistory', {
   userAgent: {
     type: DataTypes.TEXT,
   },
-  deviceId: {
-    type: DataTypes.STRING,
-  },
   status: {
     type: DataTypes.STRING,
     defaultValue: 'Success',

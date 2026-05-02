@@ -1,4 +1,17 @@
 export const notificationService = {
+  settings: {
+    attendance: true,
+    leave: true,
+    announcements: true,
+    marketing: false
+  },
+
+  setSettings(newSettings: any) {
+    if (newSettings) {
+      this.settings = { ...this.settings, ...newSettings };
+    }
+  },
+
   async requestPermission() {
     if (!('Notification' in window)) {
       console.log('This browser does not support desktop notification');
@@ -29,6 +42,7 @@ export const notificationService = {
   },
 
   notifyLeaveUpdate(status: string) {
+    if (!this.settings.leave) return;
     this.show('Leave Request Updated', {
       body: `Your leave request has been ${status.toLowerCase()}.`,
       tag: 'leave-update'
@@ -36,6 +50,7 @@ export const notificationService = {
   },
 
   notifyAttendance(type: 'Check-In' | 'Check-Out', time: string) {
+    if (!this.settings.attendance) return;
     this.show(`${type} Successful`, {
       body: `Recorded at ${time}. Have a great day!`,
       tag: 'attendance'
@@ -43,6 +58,7 @@ export const notificationService = {
   },
 
   notifyAnnouncement(title: string) {
+    if (!this.settings.announcements) return;
     this.show('New Announcement', {
       body: title,
       tag: 'announcement'

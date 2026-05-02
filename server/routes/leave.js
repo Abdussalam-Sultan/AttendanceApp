@@ -3,6 +3,7 @@ import { authenticate, isAdmin, isManager } from '../middleware/auth.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
+import Department from '../models/Department.js';
 import { attachmentUpload } from '../config/cloudinary.js';
 
 const router = express.Router();
@@ -64,7 +65,10 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
       include: [{ 
         model: User, 
         attributes: ['name', 'employeeId', 'department', 'branchId'],
-        where: userWhere
+        where: userWhere,
+        include: [
+          { model: Department, attributes: ['name'] }
+        ]
       }],
       order: [['createdAt', 'DESC']]
     });

@@ -20,7 +20,7 @@ router.get('/branches', async (req, res) => {
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, branchId, deviceId } = req.body;
+    const { name, email, password, branchId } = req.body;
     
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
@@ -39,7 +39,6 @@ router.post('/register', async (req, res) => {
       password, 
       role: 'Staff', 
       branchId,
-      deviceId: deviceId || null,
       employeeId: `EMP-${Math.floor(1000 + Math.random() * 9000)}` 
     });
     
@@ -56,8 +55,7 @@ router.post('/register', async (req, res) => {
       device,
       location: 'New Account',
       ip: req.ip || req.connection.remoteAddress,
-      userAgent,
-      deviceId: deviceId || null
+      userAgent
     });
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'fallback_secret');
@@ -73,25 +71,11 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, deviceId } = req.body;
+    const { email, password } = req.body;
     const user = await User.findOne({ where: { email } });
     
     if (!user) {
       return res.status(401).send({ error: 'Account not found. Please register first.' });
-    }
-
-    // Device Binding Check
-    if (user.deviceId && deviceId && user.deviceId !== deviceId) {
-      return res.status(403).send({ 
-        error: 'Device Mismatch', 
-        message: 'This account is bound to another device. Please contact your administrator to unbind.' 
-      });
-    }
-
-    // If not bound and deviceId provided, bind it now (first login)
-    if (!user.deviceId && deviceId) {
-      user.deviceId = deviceId;
-      await user.save();
     }
 
     const isMatch = await user.comparePassword(password);
@@ -114,8 +98,7 @@ router.post('/login', async (req, res) => {
       device,
       location: 'Secure Login', // We don't have geo-ip yet, but this is a start
       ip: req.ip || req.connection.remoteAddress,
-      userAgent,
-      deviceId: deviceId || null
+      userAgent
     });
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'fallback_secret');

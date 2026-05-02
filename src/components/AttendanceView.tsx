@@ -3,6 +3,9 @@ import { Calendar as CalendarIcon, Download, ChevronLeft, ChevronRight, ChevronD
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
 import { AttendanceStatus, AttendanceStats, AttendanceRecord, User as UserType } from '../types';
+import { haptics } from '../lib/haptics';
+import { CopyButton } from './CopyButton';
+import { AttendanceDetailModal } from './AttendanceDetailModal';
 import { 
   format, 
   addMonths, 
@@ -19,15 +22,15 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface AttendanceViewProps {
-  initialTab?: 'Logs' | 'Calendar' | 'Summary';
+  initialTab?: 'Logs' | 'Calendar' | 'Analytics';
 }
 
-export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) => {
+export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Logs' }) => {
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'Logs' | 'Calendar' | 'Summary'>(initialTab || 'Logs');
+  const [activeTab, setActiveTab] = useState<'Logs' | 'Calendar' | 'Analytics'>(initialTab);
   const [viewDate, setViewDate] = useState(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -38,6 +41,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
   const [settings, setSettings] = useState<any>(null);
 
   const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'Manager';
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -144,7 +153,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
     switch (status) {
       case 'present': return '#10b981'; // emerald-500
       case 'late': return '#f59e0b';    // amber-500
-      case 'absent': return '#ef4444';   // red-500
+      case 'absent': return '#64748b';   // slate-500 (swapped from red to reduce red theme)
       case 'leave': return '#6366f1';    // indigo-500
       default: return '#94a3b8';
     }
@@ -161,7 +170,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
     switch (status) {
       case 'present': return 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
       case 'late': return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
-      case 'absent': return 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
+      case 'absent': return 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20';
       case 'leave': return 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20';
     }
   };
@@ -193,64 +202,82 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
         </div>
       ) : (
         filteredRecords.map((record) => {
+          const user = (record as any).User || record.user;
           return (
             <div 
               key={record.id} 
               id={`record-${record.id}`}
-              className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex flex-col gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group overflow-hidden"
+              className="bg-white dark:bg-slate-900 p-4 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group relative overflow-hidden cursor-pointer"
+              onClick={() => {
+                setSelectedRecord(record);
+                haptics.selection();
+              }}
             >
-              <div className="flex gap-4">
-                <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 min-w-[64px] transition-colors group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/5">
-                  <span className="text-xl font-black text-slate-900 dark:text-white leading-none mb-1">{record.date.split(' ')[0]}</span>
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
-                    {new Date(record.date).toLocaleDateString('en-US', { weekday: 'short' })}
-                  </span>
-                </div>
-                <div className="flex-1 flex flex-col justify-center gap-1.5 overflow-hidden">
-                  {viewMode === 'all' && ((record as any).User || record.user) && (
-                    <div className="flex items-center gap-2 mb-0.5">
-                       <h3 className="text-sm font-black text-slate-900 dark:text-white truncate">
-                         {((record as any).User?.name || record.user?.name)}
+              {/* Vertical Date Indicator */}
+              <div className="flex flex-col items-center justify-center px-3 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 min-w-[64px] border border-slate-100 dark:border-slate-700/50 transition-colors group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10">
+                <span className="text-xl font-black text-slate-900 dark:text-white leading-none mb-1">{record.date.split(' ')[0]}</span>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
+                  {new Date(record.date).toLocaleDateString('en-US', { weekday: 'short' })}
+                </span>
+              </div>
+
+              {/* Information Content */}
+              <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                <div className="space-y-1">
+                  {viewMode === 'all' && user && (
+                    <div className="flex flex-col mb-1.5">
+                       <h3 className="text-sm font-black text-slate-900 dark:text-white truncate leading-tight">
+                         {user.name}
                        </h3>
-                       <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0">
-                         {((record as any).User?.employeeId || record.user?.employeeId)}
-                       </span>
+                       <div className="flex items-center gap-1.5 mt-0.5">
+                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                           ID: {user.employeeId}
+                         </span>
+                         <CopyButton value={String(user.employeeId)} label="Employee ID" className="scale-[0.65] -ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                       </div>
                     </div>
                   )}
-                  <div className="flex items-center gap-2">
-                     <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate">{record.date}</h3>
-                     {record.status === 'present' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                  
+                  {/* Status Badge - Mobile Priority */}
+                  <div className="flex items-center gap-2 sm:hidden">
+                    <div className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${getStatusStyle(record.status)}`}>
+                      {record.status}
+                    </div>
+                    {record.lateMinutes > 0 && (
+                      <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded-md">+{record.lateMinutes}m</span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 overflow-hidden">
-                     {viewMode === 'all' && (
-                       <>
-                         <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/5 rounded-md border border-indigo-100/50 dark:border-indigo-500/10 truncate">
-                           <Building2 className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                           <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 truncate tracking-tight">
-                              {(record as any).User?.Branch?.name || record.branchName || 'No Branch'}
-                           </span>
-                         </div>
-                         <div className="w-1 h-1 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
-                         <span className="text-[9px] font-bold text-slate-400 truncate">
-                            {(record as any).User?.Department?.name || record.departmentName || 'General'}
-                         </span>
-                       </>
-                     )}
-                     <div className="flex items-center gap-1.5">
-                       <Clock className="w-3 h-3 text-slate-300" />
-                       <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 tracking-tight">{record.checkIn} — {record.checkOut || '--:--'}</span>
-                     </div>
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Clock className="w-3 h-3 text-slate-300" />
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 tabular-nums">
+                        {record.checkIn} — {record.checkOut || '--:--'}
+                      </span>
+                    </div>
+
+                    {(viewMode === 'all' || record.branchName) && (
+                      <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/5 rounded-lg border border-indigo-100/50 dark:border-indigo-500/10 max-w-[120px]">
+                        <Building2 className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 truncate tracking-tight">
+                          {user?.Branch?.name || record.branchName || 'Remote'}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="flex flex-col items-end justify-center gap-2 shrink-0">
-                  <div className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${getStatusStyle(record.status)}`}>
-                    {record.status}
-                  </div>
-                  {record.lateMinutes > 0 && (
-                    <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-md">+{record.lateMinutes}m</span>
-                  )}
                 </div>
               </div>
+
+              {/* Status Section - Desktop/Larger Mobile */}
+              <div className="hidden sm:flex flex-col items-end justify-center gap-2 shrink-0 pl-2">
+                <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${getStatusStyle(record.status)}`}>
+                  {record.status}
+                </div>
+                {record.lateMinutes > 0 && (
+                  <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 rounded-lg">+{record.lateMinutes}m</span>
+                )}
+              </div>
+
             </div>
           );
         })
@@ -371,7 +398,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="mt-6 p-6 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none"
+              className="mt-6 p-6 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -422,7 +449,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
                         <div className="flex justify-between items-start mb-3 border-b border-slate-100 dark:border-slate-700 pb-2">
                            <div>
                              <p className="text-xs font-black text-slate-900 dark:text-white">{(dayRec as any).User?.name || dayRec.user?.name}</p>
-                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{(dayRec as any).User?.employeeId || dayRec.user?.employeeId}</p>
+                             <div className="flex items-center justify-between group">
+                               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{(dayRec as any).User?.employeeId || dayRec.user?.employeeId}</p>
+                               <CopyButton text={String((dayRec as any).User?.employeeId || dayRec.user?.employeeId)} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
+                             </div>
                            </div>
                            <div className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border shrink-0 ${getStatusStyle(dayRec.status)}`}>
                              {dayRec.status}
@@ -467,7 +497,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
             </motion.div>
           ) : (
             <div className="mt-6 p-8 bg-slate-50 dark:bg-slate-800/30 rounded-[32px] border-2 border-dashed border-slate-100 dark:border-slate-800/50 flex flex-col items-center justify-center text-center">
-               <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm dark:shadow-none mb-4">
+               <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm mb-4">
                  <CalendarIcon className="w-6 h-6 text-slate-300" />
                </div>
                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Select a day to view details</p>
@@ -492,14 +522,14 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
     );
   };
 
-  const renderSummary = () => {
+  const renderAnalytics = () => {
     const totalDays = monthStats.total || monthStats.present + monthStats.late + monthStats.absent + monthStats.leave;
     const efficiency = totalDays > 0 ? Math.round(((monthStats.present + monthStats.late) / totalDays) * 100) : 0;
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
         {/* Pie Chart Card */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden relative">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
            <div className="flex justify-between items-center mb-8 relative z-10">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{viewMode === 'all' ? 'Team Performance' : 'Attendance Mix'}</h3>
@@ -566,7 +596,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
         </div>
 
         {/* Efficiency Milestone */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm">
            <div className="flex items-center gap-4 mb-6">
               <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl text-emerald-600 dark:text-emerald-400">
                 <TrendingUp className="w-6 h-6" />
@@ -599,25 +629,72 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
   const handleDownloadReport = () => {
     if (filteredRecords.length === 0) return;
 
-    const headers = ["Date", "Day", "Check-In", "Check-Out", "Status", "Late Minutes"];
-    const rows = filteredRecords.map(record => [
-      record.date,
-      record.day,
-      record.checkIn,
-      record.checkOut || '--:--',
-      record.status,
-      record.lateMinutes
-    ]);
+    const isAdminView = viewMode === 'all';
+    
+    // Build Headers
+    const headers = [
+      "Employee Name",
+      "Employee ID",
+      "Department",
+      "Branch",
+      "Date",
+      "Day",
+      "Check-In",
+      "Check-Out",
+      "Total Hours",
+      "Status",
+      "Late Minutes",
+      "Reference ID"
+    ];
+
+    const rows = filteredRecords.map(record => {
+      const u = (record as any).User || record.user;
+      
+      // Calculate Total Hours
+      let totalHours = "0.00";
+      if (record.checkIn && record.checkOut && record.checkOut !== '--:--') {
+        try {
+          const start = new Date(`2000-01-01T${record.checkIn}`);
+          const end = new Date(`2000-01-01T${record.checkOut}`);
+          const diffMs = end.getTime() - start.getTime();
+          if (diffMs > 0) {
+            totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+          }
+        } catch (e) {
+          console.error("Error calculating hours", e);
+        }
+      }
+
+      const rowData = [
+        `"${u?.name || 'Self'}"`,
+        `"${u?.employeeId || 'N/A'}"`,
+        `"${u?.Department?.name || record.departmentName || 'General'}"`,
+        `"${u?.Branch?.name || record.branchName || 'Remote'}"`,
+        record.date,
+        format(new Date(record.date), 'EEEE'),
+        record.checkIn,
+        record.checkOut || '--:--',
+        totalHours,
+        record.status.toUpperCase(),
+        record.lateMinutes || 0,
+        `"${record.id}"`
+      ];
+
+      return rowData;
+    });
 
     const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Attendance_Report_${format(viewDate, 'MMM_yyyy')}.csv`);
+    link.setAttribute("download", `Attendance_Report_${format(viewDate, 'MMM_yyyy')}_${viewMode}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    // Add haptic feedback
+    haptics.notification();
   };
 
   if (loading) {
@@ -684,7 +761,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
             onClick={() => setViewMode('personal')}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               viewMode === 'personal' 
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm dark:shadow-none' 
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' 
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           >
@@ -695,7 +772,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
             onClick={() => setViewMode('all')}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               viewMode === 'all' 
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm dark:shadow-none' 
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' 
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           >
@@ -707,7 +784,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
 
       {/* Tabs */}
       <div className="flex gap-1.5 bg-white dark:bg-slate-900 p-1.5 rounded-[28px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden min-h-[56px]">
-        {(['Logs', 'Calendar', 'Summary'] as const).map((tab) => (
+        {(['Logs', 'Calendar', 'Analytics'] as const).map((tab) => (
           <button 
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -738,7 +815,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
         <div className="relative">
           <button 
             onClick={() => setShowMonthPicker(!showMonthPicker)}
-            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-colors shadow-sm dark:shadow-none hover:border-indigo-200 active:scale-95"
+            className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-colors shadow-sm dark:shadow-none hover:border-indigo-200 active:scale-95"
           >
             <CalendarIcon className="w-4 h-4 text-indigo-600" /> 
             {format(viewDate, 'MMMM yyyy')} 
@@ -756,7 +833,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] shadow-2xl dark:shadow-none z-50 p-4 grid grid-cols-3 gap-2 overflow-hidden"
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] shadow-2xl z-50 p-4 grid grid-cols-3 gap-2 overflow-hidden"
                 >
                   {Array.from({ length: 12 }).map((_, i) => {
                     const date = new Date(viewDate.getFullYear(), i, 1);
@@ -770,7 +847,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
                           }}
                           className={`py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-tight ${
                             isSelected 
-                              ? 'bg-indigo-600 text-white shadow-md dark:shadow-none' 
+                              ? 'bg-indigo-600 text-white shadow-md' 
                               : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
                           }`}
                         >
@@ -817,8 +894,13 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab }) =>
       <div className="min-h-[400px]">
         {activeTab === 'Logs' && renderLogs()}
         {activeTab === 'Calendar' && renderCalendar()}
-        {activeTab === 'Summary' && renderSummary()}
+        {activeTab === 'Analytics' && renderAnalytics()}
       </div>
+      <AttendanceDetailModal 
+        record={selectedRecord}
+        isOpen={!!selectedRecord}
+        onClose={() => setSelectedRecord(null)}
+      />
     </div>
   );
 };

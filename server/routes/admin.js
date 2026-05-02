@@ -417,31 +417,6 @@ router.delete('/users/:id', authenticate, isManager, async (req, res) => {
   }
 });
 
-// Unbind device - Admin or Manager (of branch)
-router.post('/users/:id/unbind-device', authenticate, isManager, async (req, res) => {
-  try {
-    const user = await User.findByPk(req.params.id);
-    if (!user) return res.status(404).send({ error: 'User not found' });
-
-    // Permission check
-    if (req.user.role === 'Manager') {
-      if (user.role === 'Admin') {
-        return res.status(403).send({ error: 'Managers cannot unbind administrator accounts.' });
-      }
-      if (user.branchId !== req.user.branchId) {
-        return res.status(403).send({ error: 'Managers can only unbind employees from their branch.' });
-      }
-    }
-
-    user.deviceId = null;
-    await user.save();
-
-    res.send({ message: 'Device unbound successfully' });
-  } catch (error) {
-    res.status(500).send(error);
-  }
-});
-
 // Bulk update users
 router.post('/users/bulk-update', authenticate, isManager, async (req, res) => {
   try {

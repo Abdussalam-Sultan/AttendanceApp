@@ -13,7 +13,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { OnboardingView } from './components/OnboardingView';
 import { LoginView } from './components/LoginView';
 import { NotificationOverlay } from './components/NotificationOverlay';
-import { DetailOverlay } from './components/DetailOverlay';
+
 import { AnimatePresence, motion } from 'motion/react';
 import { api } from './services/api';
 import { storage } from './services/storage';
@@ -23,18 +23,21 @@ import { WifiOff, RefreshCcw } from 'lucide-react';
 type TabType = 'home' | 'attendance' | 'leave' | 'profile' | 'admin';
 
 import { ToastProvider } from './components/ToastProvider';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [attendanceSubTab, setAttendanceSubTab] = useState<'Logs' | 'Calendar' | 'Summary'>('Logs');
+  const [attendanceTab, setAttendanceTab] = useState<'Logs' | 'Calendar' | 'Analytics'>('Logs');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(!!storage.get(storage.KEYS.AUTH_TOKEN));
@@ -43,15 +46,6 @@ function AppContent() {
   const [theme, setTheme] = useState<'light' | 'dark'>(storage.get(storage.KEYS.THEME) || 'light');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [selectedDetail, setSelectedDetail] = useState<{
-    show: boolean;
-    title: string;
-    content: string;
-    date?: string;
-    category?: string;
-    type?: string;
-    iconType?: string;
-  }>({ show: false, title: '', content: '' });
   const [todayRecord, setTodayRecord] = useState<any>(null);
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
 
@@ -99,7 +93,17 @@ function AppContent() {
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = notifications.filter(n => {
+    if (!n.isRead) {
+      if (user?.notifSettings) {
+        if (n.type === 'ATTENDANCE_STATUS' && !user.notifSettings.attendance) return false;
+        if (n.type === 'LEAVE_STATUS' && !user.notifSettings.leave) return false;
+        if ((n.type === 'ANNOUNCEMENT' || n.type === 'POLICY_CHANGE') && !user.notifSettings.announcements) return false;
+      }
+      return true;
+    }
+    return false;
+  }).length;
 
   const refreshNotifications = async () => {
     try {
@@ -159,6 +163,12 @@ function AppContent() {
 
     return () => clearInterval(interval);
   }, [isLoggedIn, user]);
+
+  useEffect(() => {
+    if (user?.notifSettings) {
+      notificationService.setSettings(user.notifSettings);
+    }
+  }, [user]);
 
   useEffect(() => {
     // Initial Auth Check
@@ -234,9 +244,9 @@ function AppContent() {
           onNavigate={(tab: TabType, subTab?: any) => {
             setActiveTab(tab);
             if (tab === 'attendance' && subTab) {
-              setAttendanceSubTab(subTab);
+              setAttendanceTab(subTab);
             } else if (tab === 'attendance') {
-              setAttendanceSubTab('Logs');
+              setAttendanceTab('Logs');
             }
           }} 
           onLogout={handleLogout} 
@@ -247,13 +257,14 @@ function AppContent() {
           onRefreshData={refreshAttendance}
           handleGlobalAction={handleGlobalCheckInOut}
           isActionLoading={isAttendanceLoading}
-          onOpenDetail={(item) => setSelectedDetail({ show: true, ...item })}
         />
       );
-      case 'attendance': return <AttendanceView initialTab={attendanceSubTab} />;
+      case 'attendance': return <AttendanceView initialTab={attendanceTab} />;
       case 'leave': return <LeaveView />;
       case 'profile': return (
         <ProfileView 
+          user={user}
+          onUserUpdate={(userData: any) => setUser(userData)}
           onLogout={handleLogout} 
           theme={theme} 
           setTheme={setTheme} 
@@ -265,7 +276,14 @@ function AppContent() {
       case 'admin': return <AdminDashboard />;
       default: return (
         <HomeView 
-          onNavigate={(tab: TabType) => setActiveTab(tab)} 
+          onNavigate={(tab: TabType, subTab?: any) => {
+            setActiveTab(tab);
+            if (tab === 'attendance' && subTab) {
+              setAttendanceTab(subTab);
+            } else if (tab === 'attendance') {
+              setAttendanceTab('Logs');
+            }
+          }} 
           onLogout={handleLogout}
           showNotifications={showNotifications} 
           setShowNotifications={setShowNotifications} 
@@ -312,13 +330,18 @@ function AppContent() {
 
         {/* Content Area */}
         <main id="main-content" className="flex-1 px-5 pt-2 pb-32 overflow-y-auto no-scrollbar scroll-smooth">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={onboardingComplete ? (isLoggedIn ? activeTab : 'auth') : 'onboarding'}
-              initial={{ opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 1.02 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              initial={{ opacity: 0, x: 20, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, x: -20, filter: 'blur(10px)' }}
+              transition={{ 
+                type: 'spring',
+                stiffness: 300,
+                damping: 30,
+                mass: 0.8
+              }}
               className="h-full flex flex-col"
             >
               {renderView()}
@@ -328,23 +351,23 @@ function AppContent() {
 
         <NotificationOverlay 
           show={showNotifications} 
+          userSettings={user?.notifSettings}
           onClose={() => {
             setShowNotifications(false);
             refreshNotifications();
           }} 
-          onOpenDetail={(item) => setSelectedDetail({ show: true, ...item, type: 'notification' })}
-        />
-
-        <DetailOverlay 
-          {...selectedDetail}
-          onClose={() => setSelectedDetail(prev => ({ ...prev, show: false }))}
         />
 
         {onboardingComplete && isLoggedIn && (
           <BottomNav 
             user={user} 
             activeTab={activeTab} 
-            setActiveTab={setActiveTab} 
+            setActiveTab={(tab: TabType) => {
+              setActiveTab(tab);
+              if (tab === 'attendance') {
+                setAttendanceTab('Logs');
+              }
+            }} 
             isCheckedIn={isCheckedIn}
             isDayCompleted={isDayCompleted}
             onGlobalAction={handleGlobalCheckInOut}

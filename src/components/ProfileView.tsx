@@ -8,6 +8,8 @@ import { getCroppedImg, getCroppedBlob } from '../lib/cropImage';
 import Cropper, { Area } from 'react-easy-crop';
 import { useToast } from './ToastProvider';
 import { haptics } from '../lib/haptics';
+import { storage } from '../services/storage';
+import { CopyButton } from './CopyButton';
 
 interface ProfileViewProps {
   onLogout: () => void;
@@ -16,11 +18,13 @@ interface ProfileViewProps {
   showNotifications: boolean;
   setShowNotifications: (show: boolean) => void;
   unreadCount: number;
+  user: any;
+  onUserUpdate: (userData: any) => void;
 }
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTheme, showNotifications, setShowNotifications, unreadCount }) => {
+export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTheme, showNotifications, setShowNotifications, unreadCount, user: propUser, onUserUpdate }) => {
   const { toast, confirm } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(propUser);
   const [loading, setLoading] = useState(true);
   const [showAppSettings, setShowAppSettings] = useState(false);
   const [showSecuritySettings, setShowSecuritySettings] = useState(false);
@@ -29,15 +33,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   const [stats, setStats] = useState<any>(null);
   const [showPersonalInfo, setShowPersonalInfo] = useState(false);
   const [personalInfoForm, setPersonalInfoForm] = useState({
-    phone: '+44 7700 900077',
-    address: '123 Tech Lane, Manchester, UK',
-    emergencyContact: 'Jane Doe (+44 7700 900088)',
-    birthDate: '1992-08-15'
+    phone: propUser?.phone || '',
+    address: propUser?.address || '',
+    emergencyContact: propUser?.emergencyContact || '',
+    birthDate: propUser?.birthDate || ''
   });
+
   const [isSavingInfo, setIsSavingInfo] = useState(false);
   const [infoSuccess, setInfoSuccess] = useState(false);
 
-  const [notifSettings, setNotifSettings] = useState({
+  const [notifSettings, setNotifSettings] = useState(propUser?.notifSettings || {
     attendance: true,
     leave: true,
     announcements: true,
@@ -50,20 +55,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
     }
   });
 
-  const [securitySettings, setSecuritySettings] = useState({
-    biometric: true,
+  const [securitySettings, setSecuritySettings] = useState(propUser?.securitySettings || {
     stayLoggedIn: true,
-    twoFactor: false,
-    appLock: false,
     locationPrivacy: true
   });
-  const [appPrefs, setAppPrefs] = useState({
+  const [appPrefs, setAppPrefs] = useState(propUser?.appSettings || {
     haptic: true,
     geofence: false,
     autoCheckout: false
   });
-  const [loginHistory, setLoginHistory] = useState<any[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+
   const [passwordForm, setPasswordForm] = useState({
     current: '',
     new: '',
@@ -78,7 +79,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const efficiency = stats ? Math.round(((stats.present || 0) + (stats.late || 0)) / Math.max(1, ((stats.present || 0) + (stats.late || 0) + (stats.absent || 0) + (stats.leave || 0))) * 100) : 0;
   const pieData = stats ? [
@@ -117,6 +118,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
         const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
         const updatedUser = await api.updateProfile({}, file);
         setUser(updatedUser);
+        onUserUpdate(updatedUser);
         setImageToCrop(null);
         toast("Profile picture updated", "success");
       }
@@ -134,7 +136,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       setNotifSettings(newSettings);
       haptics.impact();
       try {
-        await api.updateProfile({ notifSettings: JSON.stringify(newSettings) });
+        const updatedUser = await api.updateProfile({ notifSettings: JSON.stringify(newSettings) });
+        onUserUpdate(updatedUser);
       } catch (error) {
         console.error("Failed to save notification settings:", error);
       }
@@ -147,63 +150,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
     haptics.impact();
     localStorage.setItem('app_preferences', JSON.stringify(newPrefs));
     try {
-      await api.updateProfile({ appSettings: JSON.stringify(newPrefs) });
+      const updatedUser = await api.updateProfile({ appSettings: JSON.stringify(newPrefs) });
+      onUserUpdate(updatedUser);
     } catch (error) {
        console.error("Failed to save app preferences:", error);
     }
   };
 
-  const fetchLoginHistory = async () => {
-    try {
-      setLoadingHistory(true);
-      const data = await api.getLoginHistory();
-      setLoginHistory(data);
-    } catch (error) {
-      console.error("Failed to fetch login history", error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
 
-  const handleLogoutSession = async (id: string | number) => {
-    try {
-      await api.deleteLoginHistory(id);
-      setLoginHistory(prev => prev.filter(h => h.id !== id));
-      toast("Session record removed", "success");
-    } catch (error) {
-      toast("Failed to remove session", "error");
-    }
-  };
-
-  useEffect(() => {
-    if (showSecuritySettings) {
-      fetchLoginHistory();
-    }
-  }, [showSecuritySettings]);
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const userData = await api.getUser();
-        setUser(userData);
-        setPersonalInfoForm({
-          phone: userData.phone || '+44 7700 900077',
-          address: userData.address || '123 Tech Lane, Manchester, UK',
-          emergencyContact: userData.emergencyContact || 'Jane Doe (+44 7700 900088)',
-          birthDate: userData.birthDate || '1992-08-15'
-        });
-        if (userData.notifSettings) setNotifSettings(userData.notifSettings);
-        if (userData.securitySettings) setSecuritySettings(userData.securitySettings);
-        if (userData.appSettings) {
-          setAppPrefs(userData.appSettings);
-          localStorage.setItem('app_preferences', JSON.stringify(userData.appSettings));
-        }
-
-        // Fetch stats as well
+        // Fetch stats
         const statsData = await api.getAttendanceStats();
         setStats(statsData);
       } catch (error) {
-        console.error("Failed to fetch user profile:", error);
+        console.error("Failed to fetch profile stats:", error);
       } finally {
         setLoading(false);
       }
@@ -223,7 +186,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
     const newSettings = { ...securitySettings, [key]: !securitySettings[key] };
     setSecuritySettings(newSettings);
     try {
-      await api.updateProfile({ securitySettings: JSON.stringify(newSettings) });
+      const updatedUser = await api.updateProfile({ securitySettings: JSON.stringify(newSettings) });
+      onUserUpdate(updatedUser);
     } catch (error) {
       console.error("Failed to save security settings:", error);
     }
@@ -235,6 +199,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
     try {
       const updatedUser = await api.updateProfile(personalInfoForm);
       setUser(updatedUser);
+      onUserUpdate(updatedUser);
       setInfoSuccess(true);
       toast("Personal information updated successfully", "success");
       setTimeout(() => setInfoSuccess(false), 3000);
@@ -246,12 +211,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
     }
   };
 
+  const validatePassword = (password: string) => {
+    if (!password) return false;
+    if (password.length < 8) return "Password must be at least 8 characters long";
+    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter";
+    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter";
+    if (!/[0-9]/.test(password)) return "Password must contain at least one number";
+    return true;
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.new !== passwordForm.confirm) {
       toast("New passwords do not match", "error");
       return;
     }
+    
+    const passValid = validatePassword(passwordForm.new);
+    if (passValid !== true) {
+      toast(passValid as string, "warning");
+      return;
+    }
+
     setIsChangingPassword(true);
     try {
       await api.changePassword(passwordForm.current, passwordForm.new);
@@ -304,7 +285,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </div>
 
       {/* Profile Card */}
-      <div className="relative bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-slate-900 overflow-hidden rounded-[40px] shadow-sm dark:shadow-none border border-white dark:border-slate-800 p-6 pt-8 pb-10">
+      <div className="relative bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-slate-900 overflow-hidden rounded-[40px] shadow-sm border border-white dark:border-slate-800 p-6 pt-8 pb-10">
          {/* Background Decoration */}
          <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-200/20 dark:bg-indigo-500/10 rounded-full blur-3xl"></div>
          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/10 dark:bg-indigo-900/10 rounded-full blur-2xl font-display"></div>
@@ -320,7 +301,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
               />
               <div 
                 onClick={triggerFileInput}
-                className="w-28 h-28 rounded-[32px] overflow-hidden border-4 border-white dark:border-slate-800 shadow-soft dark:shadow-none group cursor-pointer transition-all active:scale-95 relative bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
+                className="w-28 h-28 rounded-[32px] overflow-hidden border-4 border-white dark:border-slate-800 shadow-soft group cursor-pointer transition-all active:scale-95 relative bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
               >
                 {user.avatar ? (
                   <img src={user.avatar} alt={user.name} className={`w-full h-full object-cover transition-opacity ${isUploading ? 'opacity-30' : 'opacity-100'}`} referrerPolicy="no-referrer" />
@@ -338,7 +319,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
               </div>
               <button 
                 onClick={triggerFileInput}
-                className="absolute -bottom-1.5 -right-1.5 w-9 h-9 bg-indigo-600 text-white rounded-full flex items-center justify-center border-4 border-white dark:border-slate-800 shadow-lg dark:shadow-none active:scale-90 transition-transform"
+                className="absolute -bottom-1.5 -right-1.5 w-9 h-9 bg-indigo-600 text-white rounded-full flex items-center justify-center border-4 border-white dark:border-slate-800 shadow-lg active:scale-90 transition-transform"
               >
                 <Camera className="w-4.5 h-4.5" />
               </button>
@@ -347,7 +328,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
             <div className="flex-1 flex flex-col items-center md:items-start">
                <div className="flex flex-col md:flex-row items-center md:items-center gap-4 mb-3">
                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center md:text-left">{user.name}</h2>
-                 <button className="flex items-center gap-1.5 px-4 py-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-bold shadow-sm dark:shadow-none border border-indigo-50 dark:border-slate-700 hover:bg-indigo-50 transition-all">
+                 <button className="flex items-center gap-1.5 px-4 py-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-bold shadow-sm border border-indigo-50 dark:border-slate-700 hover:bg-indigo-50 transition-all">
                    <Edit3 className="w-3.5 h-3.5" /> Edit Profile
                  </button>
                </div>
@@ -359,13 +340,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                     <div className="p-2 bg-white/60 dark:bg-white/5 rounded-xl group-hover:bg-white dark:group-hover:bg-white/10 transition-colors border border-white/50 dark:border-slate-700">
                       <Building2 className="w-4 h-4 text-indigo-500" />
                     </div>
-                    <span className="text-[13px] font-semibold">{user.department}</span>
+                    <span className="text-[13px] font-semibold">
+                      {user.role === 'Admin' ? 'Management' : (user.Department?.name || user.department)}
+                    </span>
                   </div>
                   <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300 group">
                     <div className="p-2 bg-white/60 dark:bg-white/5 rounded-xl group-hover:bg-white dark:group-hover:bg-white/10 transition-colors border border-white/50 dark:border-slate-700">
                       <Mail className="w-4 h-4 text-indigo-500" />
                     </div>
-                    <span className="text-[13px] font-semibold truncate max-w-[200px]">{user.email}</span>
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-[13px] font-semibold truncate max-w-[160px] md:max-w-[200px]">{user.email}</span>
+                      <CopyButton value={user.email} label="Email" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                </div>
             </div>
@@ -373,35 +359,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </div>
 
       {/* Info Badges */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Employee ID', value: user.employeeId, icon: CreditCard, color: 'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' },
-          { label: 'Department', value: user.department.slice(0, 11), icon: Users2, color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+          { label: 'Department', value: user.role === 'Admin' ? 'MGT' : (user.Department?.name || user.department).slice(0, 11), icon: Users2, color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
           { label: 'Branch', value: user.branch?.name || user.location || 'Studio', icon: MapPin, color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' },
           { label: 'Role', value: user.role, icon: Briefcase, color: 'bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400' },
         ].map((info, idx) => (
           <div key={idx} className="flex flex-col items-center gap-2 group cursor-pointer relative">
             {idx < 3 && <div className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 h-10 w-px bg-slate-100 dark:bg-slate-800"></div>}
-            <div className={`p-3 rounded-2xl ${info.color} transition-all duration-300 group-hover:scale-110 shadow-sm dark:shadow-none border border-white dark:border-slate-800`}>
+            <div className={`p-3 rounded-2xl ${info.color} transition-all duration-300 group-hover:scale-110 shadow-sm border border-white dark:border-slate-800`}>
               <info.icon className="w-5 h-5 mx-auto" />
             </div>
             <div className="flex flex-col items-center">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">{info.label}</span>
-              <span className="text-[13px] font-bold text-slate-800 dark:text-slate-200 text-center">{info.value}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-slate-800 dark:text-slate-200 text-center">{info.value}</span>
+                {info.label === 'Employee ID' && <CopyButton value={String(info.value)} label={info.label} className="scale-75" />}
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Menu Options */}
-      <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
         {menuItems.map((item: any, idx) => (
           <button 
             key={idx} 
             onClick={item.onClick}
             className="w-full flex items-center gap-4 p-5 text-left hover:bg-slate-50 dark:hover:bg-white/5 active:bg-slate-100 dark:active:bg-white/10 transition-colors group"
           >
-            <div className={`p-3.5 rounded-2xl ${item.color} transition-transform group-hover:scale-105 shadow-sm dark:shadow-none`}>
+            <div className={`p-3.5 rounded-2xl ${item.color} transition-transform group-hover:scale-105 shadow-sm`}>
               <item.icon className="w-6 h-6" />
             </div>
             <div className="flex-1">
@@ -462,7 +451,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                         value={personalInfoForm.phone}
                         onChange={(e) => setPersonalInfoForm({...personalInfoForm, phone: e.target.value})}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500/20" 
-                        placeholder="+44 0000 000000"
+                        placeholder="e.g. +234 8057 0243 55"
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -472,7 +461,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                         value={personalInfoForm.address}
                         onChange={(e) => setPersonalInfoForm({...personalInfoForm, address: e.target.value})}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500/20 resize-none" 
-                        placeholder="Street, City, Postal Code"
+                        placeholder="e.g. 15, Adeola Odeku St, Victoria Island, Lagos"
                       />
                     </div>
                   </div>
@@ -488,7 +477,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                         value={personalInfoForm.emergencyContact}
                         onChange={(e) => setPersonalInfoForm({...personalInfoForm, emergencyContact: e.target.value})}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500/20" 
-                        placeholder="Name (Phone)"
+                        placeholder="e.g. Ngozi Obi (+234 802 000 0000)"
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -563,21 +552,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                    {[
                      { label: 'Employee ID', value: user?.employeeId, icon: CreditCard },
                      { label: 'Role / Designation', value: user?.role, icon: Briefcase },
-                     { label: 'Department', value: user?.department, icon: Users2 },
+                     { label: 'Department', value: user?.role === 'Admin' ? 'Executive Management' : (user?.Department?.name || user?.department), icon: Users2 },
                      { label: 'Location', value: user?.location, icon: MapPin },
                      { label: 'Manager', value: user?.manager || 'HR Admin', icon: Shield },
                      { label: 'Join Date', value: user?.joinDate || 'Jan 15, 2024', icon: BadgeCheck },
                      { label: 'Contract Type', value: user?.contractType || 'Full-Time', icon: Lock },
                    ].map((item, i) => (
-                     <div key={i} className="flex items-center gap-4">
-                        <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500">
-                          <item.icon className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.label}</p>
-                          <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{item.value}</p>
-                        </div>
-                     </div>
+                      <div key={i} className="flex items-center gap-4 group">
+                         <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500">
+                           <item.icon className="w-5 h-5" />
+                         </div>
+                         <div className="flex-1 overflow-hidden">
+                           <div className="flex items-center justify-between">
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.label}</p>
+                             {(item.label === 'Employee ID' || item.label === 'Manager') && (
+                               <CopyButton value={String(item.value)} label={item.label} className="opacity-0 group-hover:opacity-100 scale-75" />
+                             )}
+                           </div>
+                           <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{item.value}</p>
+                         </div>
+                      </div>
                    ))}
                 </div>
               </div>
@@ -785,7 +779,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
             <div className="mt-auto pt-4">
               <button 
                 onClick={() => setShowAttendanceSummary(false)}
-                className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-4 rounded-3xl active:scale-95 transition-all text-sm uppercase tracking-widest shadow-xl"
+                className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-4 rounded-3xl active:scale-95 transition-all text-sm uppercase tracking-widest shadow-xl dark:shadow-none"
               >
                 Done
               </button>
@@ -819,11 +813,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
             <div className="space-y-8 pb-10">
               {/* Account Security Toggles */}
               <div className="space-y-4">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Access Protection</h3>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Access Privacy</h3>
                 {[
-                  { key: 'biometric', label: 'FaceID / Biometrics', sub: 'Unlock app with biometric data', icon: Shield },
-                  { key: 'appLock', label: 'App PIN Lock', sub: 'Require PIN to open the app', icon: Lock },
-                  { key: 'twoFactor', label: 'Two-Factor Auth', sub: 'Extra layer of security for logins', icon: BadgeCheck },
                   { key: 'locationPrivacy', label: 'Location Privacy', sub: 'Only track location during scans', icon: MapPin },
                   { key: 'stayLoggedIn', label: 'Persistent Session', sub: 'Keep me logged in on this device', icon: CreditCard },
                 ].map((item) => (
@@ -880,9 +871,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                       required
                       value={passwordForm.new}
                       onChange={(e) => setPasswordForm({...passwordForm, new: e.target.value})}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl px-4 py-3 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                      className={`w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl px-4 py-3 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        passwordForm.new && passwordForm.new.length < 8 ? 'ring-2 ring-amber-500/50' : ''
+                      }`} 
                       placeholder="••••••••"
                     />
+                    {passwordForm.new && (
+                      <div className="flex flex-wrap gap-2 px-1 mt-2">
+                        {[
+                          { label: '8+ Chars', met: passwordForm.new.length >= 8 },
+                          { label: 'Uppercase', met: /[A-Z]/.test(passwordForm.new) },
+                          { label: 'Number', met: /[0-9]/.test(passwordForm.new) }
+                        ].map((req, i) => (
+                          <div key={i} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider ${req.met ? 'text-emerald-500' : 'text-slate-400'}`}>
+                            <div className={`w-1 h-1 rounded-full ${req.met ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                            {req.label}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Confirm New Password</label>
@@ -905,61 +912,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                 </form>
               </div>
 
-              {/* Active Sessions */}
-              <div className="space-y-4">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Sign-in History</h3>
-                <div className="space-y-3">
-                  {loadingHistory ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
-                    </div>
-                  ) : loginHistory.length === 0 ? (
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No recent sessions found</p>
-                    </div>
-                  ) : (
-                    loginHistory.map((session, i) => (
-                      <div key={session.id} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${i * 50}ms` }}>
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500`}>
-                            {session.device.includes('iPhone') || session.device.includes('Android') ? <ToggleRight className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
-                          </div>
-                          <div>
-                            <h4 className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{session.device}</h4>
-                            <p className="text-[10px] font-medium text-slate-400">
-                              {session.location || 'Unknown Location'} • {i === 0 ? 'Current Session' : new Date(session.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                        </div>
-                        {i !== 0 && (
-                          <button 
-                            onClick={() => handleLogoutSession(session.id)}
-                            className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase tracking-widest"
-                          >
-                            Logout
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
-                  {loginHistory.length > 0 && (
-                    <button 
-                      onClick={() => toast("Feature coming soon", "info")}
-                      className="w-full py-4 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest text-center"
-                    >
-                      Sign out from all devices
-                    </button>
-                  )}
-                </div>
-              </div>
-
               <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 p-5 rounded-[32px] space-y-2">
                 <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
                   <Shield className="w-4 h-4" />
                   <span className="text-[10px] font-bold uppercase tracking-widest">Privacy Tip</span>
                 </div>
                 <p className="text-[11px] text-amber-700/70 dark:text-amber-400/60 font-medium leading-relaxed">
-                  We recommend changing your password every 90 days for optimal security. Your password must be at least 8 characters long.
+                   We recommend changing your password every 90 days for optimal security. Your password must be at least 8 characters long.
                 </p>
               </div>
             </div>
@@ -1007,7 +966,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                 </div>
                 <div 
                   onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                  className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group cursor-pointer hover:border-indigo-100 dark:hover:border-indigo-500/30 transition-colors"
+                  className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center justify-between group cursor-pointer hover:border-indigo-100 dark:hover:border-indigo-500/30 transition-colors"
                 >
                   <div className="flex items-center gap-4">
                     <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-indigo-500">

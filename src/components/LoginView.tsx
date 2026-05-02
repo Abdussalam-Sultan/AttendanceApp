@@ -42,28 +42,60 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     }
   }, [isLogin, toast]);
 
+  const validatePassword = (password: string) => {
+    if (!password) return false;
+    if (password.length < 8) return "Password must be at least 8 characters long";
+    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter";
+    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter";
+    if (!/[0-9]/.test(password)) return "Password must contain at least one number";
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isLogin && !formData.branchId) {
-      setError("Please select a branch.");
-      return;
+    if (!isLogin) {
+      if (!formData.branchId) {
+        setError("Please select a branch.");
+        return;
+      }
+      const passValid = validatePassword(formData.password);
+      if (passValid !== true) {
+        setError(passValid as string);
+        return;
+      }
     }
     setLoading(true);
     setError(null);
     
     try {
       let user;
-      if (isLogin) {
-        user = await api.login({ email: formData.email, password: formData.password });
-      } else {
-        user = await api.register({ 
-          name: formData.name, 
-          email: formData.email, 
-          password: formData.password,
-          branchId: formData.branchId
-        });
+      const payload = isLogin 
+        ? { email: formData.email, password: formData.password }
+        : { 
+            name: formData.name, 
+            email: formData.email, 
+            password: formData.password,
+            branchId: formData.branchId
+          };
+        
+      const res = await fetch(isLogin ? '/api/auth/login' : '/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        let errorMessage = data.error || (isLogin ? 'Login failed' : 'Registration failed');
+        if (data.details) {
+          errorMessage += `: ${data.details}`;
+        }
+        throw new Error(errorMessage);
       }
-      onSuccess(user);
+      
+      api.saveAuthData(data.user, data.token);
+      onSuccess(data.user);
     } catch (err: any) {
       setError(err.message || "Something went wrong. Please check your connection.");
       console.error(err);
@@ -97,7 +129,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       </div>
 
       {/* Form Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-sm dark:shadow-none border border-slate-100 dark:border-slate-800 flex-1 flex flex-col">
+      <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 flex-1 flex flex-col">
         {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-2xl text-red-600 dark:text-red-400 text-xs font-medium animate-in fade-in slide-in-from-top-2">
             {error}
@@ -118,7 +150,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   <input 
                     type="text" 
                     required 
-                    placeholder="Enter your name"
+                    placeholder="e.g. Emeka Obi"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
@@ -151,7 +183,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               <input 
                 type="email" 
                 required 
-                placeholder="name@company.com"
+                placeholder="emeka.obi@company.com"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
@@ -180,7 +212,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                 placeholder="Minimum 8 characters"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-12 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                className={`w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-12 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                  !isLogin && formData.password && formData.password.length < 8 ? 'border-amber-400' : ''
+                }`} 
               />
               <button 
                 type="button" 
@@ -190,6 +224,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" /> }
               </button>
             </div>
+            {!isLogin && formData.password && (
+              <div className="flex flex-wrap gap-2 px-1 mt-2">
+                {[
+                  { label: '8+ Chars', met: formData.password.length >= 8 },
+                  { label: 'Uppercase', met: /[A-Z]/.test(formData.password) },
+                  { label: 'Number', met: /[0-9]/.test(formData.password) }
+                ].map((req, i) => (
+                  <div key={i} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider ${req.met ? 'text-emerald-500' : 'text-slate-400'}`}>
+                    <div className={`w-1 h-1 rounded-full ${req.met ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    {req.label}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-4">

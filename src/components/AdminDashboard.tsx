@@ -3,6 +3,7 @@ import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { AttendanceDetailModal } from './AttendanceDetailModal';
 
 // Fix Leaflet marker icons
 const DefaultIcon = L.icon({
@@ -34,8 +35,10 @@ const LocationPickerMap = ({ onSelect }: { onSelect: (lat: number, lng: number) 
   return null;
 };
 
+import { format } from 'date-fns';
 import { CustomDropdown } from './CustomDropdown';
 import { api } from '../services/api';
+import { CopyButton } from './CopyButton';
 
 import { useToast } from './ToastProvider';
 
@@ -59,7 +62,15 @@ export const AdminDashboard: React.FC = () => {
   const [departmentStats, setDepartmentStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
   const [dateRange, setDateRange] = useState({ 
     start: new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0], 
     end: new Date().toISOString().split('T')[0] 
@@ -100,6 +111,7 @@ export const AdminDashboard: React.FC = () => {
   const [editingAnnouncement, setEditingAnnouncement] = useState<any>(null);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', category: 'General' });
   const [announceLoading, setAnnounceLoading] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<any | null>(null);
   const [isLauncherOpen, setIsLauncherOpen] = useState(true);
 
   const fetchData = async () => {
@@ -251,9 +263,27 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const validatePassword = (password: string) => {
+    if (!password) return false;
+    if (password.length < 8) return "Password must be at least 8 characters long";
+    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter";
+    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter";
+    if (!/[0-9]/.test(password)) return "Password must contain at least one number";
+    return true;
+  };
+
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+    
+    if (editingUser.isNew) {
+      const passValid = validatePassword(editingUser.password);
+      if (passValid !== true) {
+        toast(passValid as string, "warning");
+        return;
+      }
+    }
+
     setUserUpdateLoading(true);
     try {
       if (editingUser.isNew) {
@@ -428,42 +458,73 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleUnbindDevice = async (userId: string, userName: string) => {
-    const confirmed = await confirm(
-      "Unbind Device",
-      `Are you sure you want to unbind the device for ${userName}? They will be able to log in from a new device.`
-    );
-    if (!confirmed) return;
-
-    try {
-      await api.unbindUserDevice(userId);
-      toast("Device unbound successfully", "success");
-      // Update local state if needed
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, deviceId: null } : u));
-      if (selectedUser?.id === userId) {
-        setSelectedUser({ ...selectedUser, deviceId: null });
-      }
-    } catch (error) {
-      toast("Failed to unbind device", "error");
-    }
-  };
-
   const handleDownloadReport = () => {
     if (filteredRecords.length === 0) {
       toast("No records to download", "warning");
       return;
     }
 
-    const headers = ["Employee Name", "Employee ID", "Department", "Check-In", "Check-Out", "Status", "Date"];
-    const rows = filteredRecords.map(record => [
-      `"${record.User?.name || 'Unknown'}"`,
-      `"${record.User?.employeeId || 'N/A'}"`,
-      `"${record.User?.department || 'N/A'}"`,
-      `"${record.checkIn || '--:--'}"`,
-      `"${record.checkOut || '--:--'}"`,
-      `"${record.status || 'Unknown'}"`,
-      `"${record.date || ''}"`
-    ]);
+    const isFullAdmin = user?.role === 'Admin';
+    
+    // Headers based on role permissions
+    const headers = [
+      "Employee Name", 
+      "Employee ID", 
+      "Email",
+      "Department", 
+      "Branch", 
+      "Branch Code",
+      "Role",
+      "Date", 
+      "Day", 
+      "Check-In", 
+      "Check-Out", 
+      "Total Hours",
+      "Status", 
+      "Late Minutes",
+      "Location Verified",
+      "Address",
+      "Reference ID"
+    ];
+
+    const rows = filteredRecords.map(record => {
+      const u = record.User || record.user;
+      
+      // Calculate Total Hours
+      let totalHours = "0.00";
+      if (record.checkIn && record.checkOut && record.checkOut !== '--:--') {
+        try {
+          const start = new Date(`2000-01-01T${record.checkIn}`);
+          const end = new Date(`2000-01-01T${record.checkOut}`);
+          const diffMs = end.getTime() - start.getTime();
+          if (diffMs > 0) {
+            totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+          }
+        } catch (e) {}
+      }
+
+      const rowData = [
+        `"${u?.name || 'Unknown'}"`,
+        `"${u?.employeeId || 'N/A'}"`,
+        `"${u?.email || 'N/A'}"`,
+        `"${u?.Department?.name || u?.department || 'General'}"`,
+        `"${u?.Branch?.name || record.branchName || 'Remote'}"`,
+        `"${u?.Branch?.code || 'N/A'}"`,
+        `"${u?.role || 'User'}"`,
+        record.date,
+        record.date ? format(new Date(record.date), 'EEEE') : '',
+        record.checkIn,
+        record.checkOut || '--:--',
+        totalHours,
+        (record.status || 'Unknown').toUpperCase(),
+        record.lateMinutes || 0,
+        record.latitude ? "YES" : "NO",
+        `"${(record.address || 'N/A').replace(/"/g, '""')}"`,
+        `"${record.id}"`
+      ];
+
+      return rowData;
+    });
 
     const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -531,10 +592,101 @@ export const AdminDashboard: React.FC = () => {
   const lateCount = stats?.late || 0;
   const absentLeave = (stats?.absent || 0) + (stats?.leave || 0);
 
+  const listContainerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.05, delayChildren: 0.1 }
+    }
+  };
+
+  const listItemVariants = {
+    hidden: { opacity: 0, y: 10, scale: 0.98 },
+    show: { 
+      opacity: 1, 
+      y: 0, 
+      scale: 1,
+      transition: { type: 'spring', stiffness: 300, damping: 30 }
+    }
+  };
+
+  const MemoizedEmployeeCard = React.memo(({ emp, index }: { emp: any, index: number }) => (
+    <motion.div
+      key={emp.id}
+      variants={listItemVariants}
+      className={`group relative flex items-center gap-4 p-4 rounded-3xl transition-all duration-300 ${
+        selectedUserIds.includes(emp.id) 
+          ? 'bg-indigo-50/80 dark:bg-indigo-500/10 ring-1 ring-indigo-500/20 shadow-lg' 
+          : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/5'
+      }`}
+    >
+      <button 
+        onClick={() => toggleUserSelection(emp.id)}
+        className="shrink-0"
+      >
+        {selectedUserIds.includes(emp.id) ? (
+          <CheckSquare className="w-5 h-5 text-indigo-600" />
+        ) : (
+          <Square className="w-5 h-5 text-slate-200 dark:text-slate-700" />
+        )}
+      </button>
+
+      <div className="relative shrink-0">
+        <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm">
+          {emp.avatar ? (
+            <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <User className="w-6 h-6 text-slate-400" />
+          )}
+        </div>
+        <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 shadow-sm ${
+          emp.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'
+        }`} />
+      </div>
+
+      <div className="flex-1 min-w-0" onClick={() => { setSelectedUser(emp); setShowDetailsModal(true); }}>
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">{emp.name}</h3>
+          {emp.role === 'Admin' && <Crown className="w-3 h-3 text-amber-500" />}
+        </div>
+        <p className="text-[10px] font-medium text-slate-400 truncate">
+          {emp.role} • {emp.role === 'Admin' ? 'Management' : (emp.Department?.name || emp.department)}
+        </p>
+          <div className="flex items-center gap-2 mt-0.5" onClick={e => e.stopPropagation()}>
+            <p className="text-[10px] text-slate-500 font-mono truncate">{emp.email}</p>
+            <CopyButton value={emp.email} label="Email" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+      </div>
+
+      <div className="flex gap-1">
+         <button 
+           onClick={() => {
+             setEditingUser({ ...emp });
+             setShowUserModal(true);
+           }}
+           className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"
+         >
+           <Edit2 className="w-4 h-4" />
+         </button>
+         <button 
+           onClick={() => handleDeleteUser(emp)}
+           className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-400 hover:text-red-600 rounded-xl transition-all active:scale-90"
+         >
+           <Trash2 className="w-4 h-4" />
+         </button>
+      </div>
+    </motion.div>
+  ));
+
   const renderLauncher = () => (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Stats Grid - Moved inside launcher for a cleaner cockpit feel */}
-      <div className="grid grid-cols-2 gap-4">
+    <motion.div 
+      variants={listContainerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-8"
+    >
+      {/* Stats Grid */}
+      <motion.div variants={listItemVariants} className="grid grid-cols-2 gap-4">
         {[
           { label: 'Staff', value: totalEmployees, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
           { label: 'Active', value: activeToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -551,10 +703,10 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </div>
         ))}
-      </div>
+      </motion.div>
 
       {/* Team Operations Group */}
-      <div className="space-y-4">
+      <motion.div variants={listItemVariants} className="space-y-4">
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Team Operations</h3>
         <div className="grid grid-cols-2 gap-3">
           {[
@@ -568,16 +720,16 @@ export const AdminDashboard: React.FC = () => {
                 setActiveTab(module.id as any);
                 setIsLauncherOpen(false);
               }}
-              className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-indigo-500/5 dark:hover:shadow-none transition-all group"
+              className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-indigo-500/5 transition-all group active:scale-95"
             >
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 group-hover:scale-110 transition-transform`}>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 group-hover:scale-110 transition-transform shadow-sm`}>
                 <module.icon className={`w-4 h-4 ${module.color}`} />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <p className="text-xs font-bold text-slate-900 dark:text-white">{module.label}</p>
                   {module.badge > 0 ? (
-                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.4)]" />
                   ) : null}
                 </div>
                 <p className="text-[9px] font-medium text-slate-400">{module.desc}</p>
@@ -585,10 +737,10 @@ export const AdminDashboard: React.FC = () => {
             </button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* Organization Group */}
-      <div className="space-y-4">
+      <motion.div variants={listItemVariants} className="space-y-4">
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Organization</h3>
         <div className="grid grid-cols-2 gap-3">
           {[
@@ -603,39 +755,47 @@ export const AdminDashboard: React.FC = () => {
                 setActiveTab(module.id as any);
                 setIsLauncherOpen(false);
               }}
-              className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-slate-500/5 dark:hover:shadow-none transition-all group"
+              className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-slate-500/5 transition-all group active:scale-95"
             >
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10`}>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 shadow-sm group-hover:scale-110 transition-transform`}>
                 <module.icon className={`w-4 h-4 ${module.color}`} />
               </div>
               <p className="text-[11px] font-bold text-slate-900 dark:text-white">{module.label}</p>
             </button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
-      {/* Direct Quick Approval Card if pending */}
+      {/* Direct Quick Approval Card */}
       {pendingLeaves.length > 0 && (
-        <div className="p-4 bg-indigo-600 rounded-[28px] text-white flex items-center justify-between gap-4 mt-2">
-          <div>
+        <motion.div 
+          variants={listItemVariants}
+          className="p-4 bg-indigo-600 rounded-[28px] text-white flex items-center justify-between gap-4 mt-2 overflow-hidden relative shadow-lg shadow-indigo-500/30"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+          <div className="relative z-10">
             <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-0.5">Pending Action</p>
             <p className="text-xs font-bold leading-tight">{pendingLeaves.length} leave requests need review</p>
           </div>
           <button 
             onClick={() => { setActiveTab('approvals'); setIsLauncherOpen(false); }}
-            className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-bold uppercase tracking-wider active:scale-95 transition-all"
+            className="relative z-10 px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
           >
             Review
           </button>
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 
   return (
     <div className="flex flex-col gap-6 pb-24">
       {/* Dynamic Header */}
-      <div className="flex justify-between items-center px-1">
+      <motion.div 
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex justify-between items-center px-1"
+      >
         <div className="flex flex-col gap-0.5">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">
             {isLauncherOpen ? (user?.role === 'Manager' ? 'Operations' : 'Management') : (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))}
@@ -646,25 +806,29 @@ export const AdminDashboard: React.FC = () => {
         </div>
         <div className="flex gap-2">
           {!isLauncherOpen && (
-            <button 
+            <motion.button 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setIsLauncherOpen(true)}
-              className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-[10px] font-bold uppercase tracking-widest text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-colors"
+              className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-[10px] font-bold uppercase tracking-widest text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-colors shadow-sm"
             >
               Back to Hub
-            </button>
+            </motion.button>
           )}
-          <button 
+          <motion.button 
+            whileTap={{ scale: 0.95 }}
             onClick={() => {
               setEditingAnnouncement(null);
               setNewAnnouncement({ title: '', content: '', category: 'General' });
               setShowAnnounceModal(true);
             }}
-            className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl active:scale-95 transition-all"
+            className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl transition-all shadow-sm"
           >
             <BellPlus className="w-4 h-4" />
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Announcement Modal */}
       <AnimatePresence>
@@ -681,7 +845,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl dark:shadow-none p-8 flex flex-col"
+              className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8 flex flex-col"
             >
               <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto mb-8"></div>
               <div className="flex justify-between items-center mb-6">
@@ -755,6 +919,69 @@ export const AdminDashboard: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Announcement Detail Preview Mode */}
+      <AnimatePresence>
+        {selectedAnnouncement && !showAnnounceModal && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedAnnouncement(null)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[210]"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed inset-x-5 top-1/2 -translate-y-1/2 max-h-[70vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
+            >
+              <div className="flex justify-between items-start mb-6">
+                <div className="p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 shadow-sm">
+                  <Megaphone className="w-8 h-8" />
+                </div>
+                <button 
+                  onClick={() => setSelectedAnnouncement(null)}
+                  className="p-2 bg-slate-50 dark:bg-slate-800 text-slate-400 rounded-full hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                   <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em]">
+                     {selectedAnnouncement.category || 'Announcement'}
+                   </span>
+                   <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                     {selectedAnnouncement.date}
+                   </span>
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                  {selectedAnnouncement.title}
+                </h3>
+              </div>
+
+              <div className="flex-1 overflow-y-auto no-scrollbar py-2">
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400 leading-relaxed border-l-4 border-indigo-100 dark:border-indigo-500/20 pl-4 py-1">
+                  {selectedAnnouncement.content}
+                </p>
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-slate-50 dark:border-slate-800">
+                <button 
+                  onClick={() => setSelectedAnnouncement(null)}
+                  className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-4 rounded-2xl active:scale-95 transition-all text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none"
+                >
+                  Dismiss Preview
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Branch Modal */}
       <AnimatePresence>
         {showBranchModal && (
@@ -817,7 +1044,7 @@ export const AdminDashboard: React.FC = () => {
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="mt-2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl dark:shadow-none border border-slate-100 dark:border-slate-700 overflow-hidden max-h-48 overflow-y-auto z-[200] relative"
+                        className="mt-2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 overflow-hidden max-h-48 overflow-y-auto z-[200] relative"
                       >
                         {locationResults.map((res, i) => (
                           <button
@@ -990,7 +1217,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl dark:shadow-none p-8 overflow-y-auto no-scrollbar"
+              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -1022,7 +1249,7 @@ export const AdminDashboard: React.FC = () => {
                         value={editingUser.name}
                         onChange={e => setEditingUser({...editingUser, name: e.target.value})}
                         className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
-                        placeholder="John Doe"
+                        placeholder="e.g. Emeka Obi"
                       />
                     </div>
                     <div className="space-y-1.5 flex flex-col">
@@ -1033,7 +1260,7 @@ export const AdminDashboard: React.FC = () => {
                         value={editingUser.email}
                         onChange={e => setEditingUser({...editingUser, email: e.target.value})}
                         className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
-                        placeholder="john.doe@company.com"
+                        placeholder="emeka.obi@company.com"
                       />
                     </div>
                     {!editingUser.isNew && (
@@ -1059,15 +1286,34 @@ export const AdminDashboard: React.FC = () => {
                     )}
                     {editingUser.isNew && (
                       <div className="space-y-1.5 flex flex-col">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Initial Password</label>
+                        <div className="flex justify-between items-center px-1 mb-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Initial Password</label>
+                          <span className="text-[9px] font-bold text-indigo-500 uppercase">Min. 8 Chars</span>
+                        </div>
                         <input 
                           type="text" 
                           required
                           value={editingUser.password}
                           onChange={e => setEditingUser({...editingUser, password: e.target.value})}
-                          className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
+                          className={`bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all ${
+                            editingUser.password && editingUser.password.length < 8 ? 'ring-2 ring-amber-500/50' : ''
+                          }`}
                           placeholder="Welcome123!"
                         />
+                        {editingUser.password && (
+                          <div className="flex flex-wrap gap-2 px-1 mt-2">
+                             {[
+                               { label: '8+ Chars', met: editingUser.password.length >= 8 },
+                               { label: 'Uppercase', met: /[A-Z]/.test(editingUser.password) },
+                               { label: 'Number', met: /[0-9]/.test(editingUser.password) }
+                             ].map((req, i) => (
+                               <div key={i} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider ${req.met ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                 <div className={`w-1.5 h-1.5 rounded-full ${req.met ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                 {req.label}
+                               </div>
+                             ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1165,7 +1411,7 @@ export const AdminDashboard: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={userUpdateLoading}
-                  className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl dark:shadow-none"
+                  className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl"
                 >
                   {userUpdateLoading ? <Clock className="w-4 h-4 animate-spin mx-auto" /> : (editingUser.isNew ? 'Create New Profile' : 'Update Personnel File')}
                 </button>
@@ -1194,7 +1440,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-t-[40px] shadow-2xl dark:shadow-none overflow-y-auto no-scrollbar"
+              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-t-[40px] shadow-2xl overflow-y-auto no-scrollbar"
             >
               <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 px-8 py-6 flex justify-between items-center border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-4">
@@ -1223,7 +1469,7 @@ export const AdminDashboard: React.FC = () => {
 
               <div className="p-8 space-y-8">
                 {/* Employee Card */}
-                <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm dark:shadow-none">
+                <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee ID</p>
@@ -1231,7 +1477,9 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department</p>
-                      <p className="text-sm font-black text-slate-900 dark:text-white">{selectedUser.department}</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">
+                        {selectedUser.role === 'Admin' ? 'Executive Management' : (selectedUser.Department?.name || selectedUser.department)}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Branch</p>
@@ -1252,21 +1500,22 @@ export const AdminDashboard: React.FC = () => {
                 {/* Contact Section */}
                 <div className="space-y-4">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Contact Details</h3>
-                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-2 shadow-sm dark:shadow-none space-y-1">
+                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-2 space-y-1">
                     {[
                       { icon: Mail, label: 'Email Address', value: selectedUser.email },
                       { icon: MapPin, label: 'Resident Address', value: selectedUser.address || 'Manchester, UK' },
                       { icon: Tag, label: 'Contact Number', value: selectedUser.phone || '+44 (0) 770 000 0000' },
                     ].map((item, i) => (
-                      <div key={i} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                        <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-400">
-                          <item.icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">{item.label}</p>
-                          <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate">{item.value}</p>
-                        </div>
-                      </div>
+                          <div className="flex items-center gap-1.5 p-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group">
+                            <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-400">
+                              <item.icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">{item.label}</p>
+                              <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate">{item.value}</p>
+                            </div>
+                            <CopyButton text={String(item.value)} label={item.label} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
                     ))}
                   </div>
                 </div>
@@ -1277,12 +1526,13 @@ export const AdminDashboard: React.FC = () => {
                   <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6">
                     <div className="space-y-6">
                       <div className="flex justify-between items-start">
-                        <div>
+                        <div className="flex items-center justify-between">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Emergency Contact</p>
-                          <p className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">
-                            {selectedUser.emergencyContact || 'Not Provided'}
-                          </p>
+                          <CopyButton text={selectedUser.emergencyContact || ''} label="Emergency Contact" className="scale-75" />
                         </div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">
+                          {selectedUser.emergencyContact || 'Not Provided'}
+                        </p>
                         <AlertTriangle className="w-4 h-4 text-amber-500" />
                       </div>
                       <div className="pt-6 border-t border-slate-50 dark:border-slate-800">
@@ -1298,34 +1548,6 @@ export const AdminDashboard: React.FC = () => {
                           <span>Verified</span>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Device Binding Section */}
-                <div className="space-y-4">
-                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">App Security</h3>
-                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${selectedUser.deviceId ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-400'}`}>
-                          <Navigation className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Device Binding</p>
-                          <p className="text-sm font-bold text-slate-900 dark:text-white">
-                            {selectedUser.deviceId ? 'Account Bound to Active Device' : 'No Device Bound'}
-                          </p>
-                        </div>
-                      </div>
-                      {selectedUser.deviceId && (
-                        <button 
-                          onClick={() => handleUnbindDevice(selectedUser.id, selectedUser.name)}
-                          className="px-4 py-2 bg-red-50 dark:bg-red-500/10 text-[10px] font-bold uppercase tracking-widest text-red-500 rounded-xl active:scale-95 transition-all"
-                        >
-                          Unbind Device
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1352,7 +1574,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="fixed inset-6 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl dark:shadow-none overflow-hidden border border-slate-100 dark:border-slate-800"
+              className="fixed inset-6 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
             >
               <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                 <div className="flex items-center gap-3">
@@ -1373,7 +1595,7 @@ export const AdminDashboard: React.FC = () => {
                     <img 
                       src={viewingAttachment} 
                       alt="Attachment Preview"
-                      className="max-w-full max-h-full object-contain rounded-xl shadow-lg dark:shadow-none"
+                      className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
                       referrerPolicy="no-referrer"
                     />
                   ) : viewingAttachment.match(/\.pdf$/i) ? (
@@ -1393,7 +1615,7 @@ export const AdminDashboard: React.FC = () => {
                       </p>
                       <button 
                         onClick={() => window.open(viewingAttachment, '_blank')}
-                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg dark:shadow-none"
+                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg"
                       >
                         Open In New Tab
                       </button>
@@ -1419,7 +1641,7 @@ export const AdminDashboard: React.FC = () => {
                     }
                     setViewingAttachment(null);
                   }}
-                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-xl dark:shadow-none"
+                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-xl"
                  >
                    {viewingAttachment.startsWith('http') ? 'View Full File' : 'Download File'}
                  </button>
@@ -1463,7 +1685,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {['workforce', 'departments', 'branches'].includes(activeTab) && (
-                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                     <div className="flex items-center gap-3 px-3 border-r border-slate-50 dark:border-slate-800 group">
                       <div className="p-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
                         <Clock className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
@@ -1489,7 +1711,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {activeTab === 'workforce' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Real-time Attendance</h2>
             <div className="flex items-center gap-2">
@@ -1544,7 +1766,7 @@ export const AdminDashboard: React.FC = () => {
                 )}
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
@@ -1609,7 +1831,14 @@ export const AdminDashboard: React.FC = () => {
               <div className="p-2 flex flex-col gap-1 max-h-[500px] overflow-y-auto no-scrollbar">
                 {filteredRecords.length > 0 ? (
                   filteredRecords.map((record, i) => (
-                    <div key={i} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group">
+                    <div 
+                      key={i} 
+                      className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group"
+                      onClick={() => {
+                        setSelectedRecord(record);
+                        haptics.selection();
+                      }}
+                    >
                       <div className="relative">
                         <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center overflow-hidden text-slate-400">
                           {record.User?.avatar ? (
@@ -1628,9 +1857,14 @@ export const AdminDashboard: React.FC = () => {
                           <span className="text-[10px] font-bold text-slate-400">{record.checkIn}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-slate-500">{record.User?.department}</span>
+                          <span className="text-[10px] font-medium text-slate-500">
+                            {record.User?.role === 'Admin' ? 'MGT' : (record.User?.Department?.name || record.User?.department)}
+                          </span>
                           <span className="text-slate-300">•</span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{record.User?.employeeId}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{record.User?.employeeId}</span>
+                            <CopyButton text={record.User?.employeeId} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
                         </div>
                         {record.checkOut !== '--:--' && (
                           <div className="mt-1 flex items-center gap-2">
@@ -1669,7 +1903,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex flex-col gap-3">
             {pendingLeaves.length > 0 ? (
               pendingLeaves.map((req, i) => (
-                <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none transition-all hover:border-indigo-100">
+                <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-100">
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden">
@@ -1681,7 +1915,9 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{req.User?.name}</p>
-                        <p className="text-[10px] font-medium text-slate-400 truncate">{req.User?.department} • {req.User?.employeeId}</p>
+                        <p className="text-[10px] font-medium text-slate-400 truncate">
+                          {req.User?.role === 'Admin' ? 'MGT' : (req.User?.Department?.name || req.User?.department)} • {req.User?.employeeId}
+                        </p>
                       </div>
                     </div>
                     <span className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-wider">
@@ -1856,74 +2092,24 @@ export const AdminDashboard: React.FC = () => {
             )}
           </AnimatePresence>
 
-          <div className="flex flex-col gap-3">
+          <motion.div 
+            variants={listContainerVariants}
+            initial="hidden"
+            animate="show"
+            className="flex flex-col gap-3"
+          >
             {users
               .filter(emp => user?.role === 'Admin' || emp.role !== 'Admin')
+              .filter(emp => 
+                emp.name.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
+                emp.email.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+                (emp.Department?.name || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+                emp.role.toLowerCase().includes(debouncedSearch.toLowerCase())
+              )
               .map((emp, i) => (
-                <div 
-                  key={i} 
-                  className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border ${selectedUserIds.includes(emp.id) ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-slate-100 dark:border-slate-800 shadow-sm'} dark:shadow-none flex items-center gap-4 transition-all`}
-                >
-                  <button 
-                    onClick={() => toggleUserSelection(emp.id)}
-                    className={`p-1 rounded-lg transition-colors ${selectedUserIds.includes(emp.id) ? 'text-indigo-600' : 'text-slate-300'}`}
-                  >
-                    {selectedUserIds.includes(emp.id) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-                  </button>
-                  <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center overflow-hidden text-slate-400 relative">
-                    {emp.avatar ? <img src={emp.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <User className="w-6 h-6" />}
-                    {emp.status === 'Deactivated' && (
-                      <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center">
-                        <X className="w-4 h-4 text-white" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate pr-1">{emp.name}</p>
-                      {emp.status === 'Deactivated' && (
-                        <span className="shrink-0 px-1.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-500 text-[8px] font-bold uppercase rounded">Deactivated</span>
-                      )}
-                      {emp.deviceId && (
-                        <span className="shrink-0 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 text-[8px] font-bold uppercase rounded flex items-center gap-1">
-                          <Navigation className="w-2 h-2" />
-                          Bound
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] font-medium text-slate-400 truncate">{emp.role} • {emp.department}</p>
-                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">{emp.email}</p>
-                  </div>
-                <div className="flex gap-1">
-                   <button 
-                    onClick={() => {
-                      setSelectedUser(emp);
-                      setShowDetailsModal(true);
-                    }}
-                    className="p-2.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"
-                    title="View Full Profile"
-                   >
-                     <Eye className="w-4 h-4" />
-                   </button>
-                   <button 
-                    onClick={() => {
-                      setEditingUser({ ...emp, isNew: false });
-                      setShowUserModal(true);
-                    }}
-                    className="p-2.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
-                   >
-                     <Edit2 className="w-4 h-4" />
-                   </button>
-                   <button 
-                    onClick={() => handleDeleteUser(emp)}
-                    className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                   >
-                     <UserX className="w-4 h-4" />
-                   </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                <MemoizedEmployeeCard key={emp.id} emp={emp} index={i} />
+              ))}
+          </motion.div>
         </div>
       ) : activeTab === 'branches' && user?.role === 'Admin' ? (
         <div className="flex flex-col gap-6">
@@ -1941,16 +2127,17 @@ export const AdminDashboard: React.FC = () => {
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex gap-4 min-w-[600px]">
               {branchStats.map((bStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                         <Building2 className="w-5 h-5" />
                       </div>
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-900 dark:text-white">{bStats.name}</h3>
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="text-xs font-bold text-slate-900 dark:text-white">{bStats.name}</h3>
+                          <CopyButton value={bStats.id} label="Branch ID" className="scale-75" />
+                        </div>
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: {bStats.id.slice(0, 8)}</p>
-                      </div>
                     </div>
                     <div className="px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-lg text-[9px] font-bold">
                       {bStats.averageAttendance}% Att.
@@ -1982,7 +2169,7 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="grid gap-4">
             {branches.map((branch, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center justify-between group">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                     <Building2 className="w-6 h-6" />
@@ -1991,6 +2178,7 @@ export const AdminDashboard: React.FC = () => {
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px]">{branch.name}</h3>
                     <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1 truncate">
                       <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{branch.location || 'Remote'}</span> • {branch.code || 'NO-CODE'}
+                      {branch.code && <CopyButton value={branch.code} label="Branch Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />}
                     </p>
                   </div>
                 </div>
@@ -2033,14 +2221,17 @@ export const AdminDashboard: React.FC = () => {
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex gap-4 min-w-[600px]">
               {departmentStats.map((dStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                         <Tag className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[150px]">{dStats.name}</h3>
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[150px]">{dStats.name}</h3>
+                          <CopyButton text={String(dStats.id)} label="Dept ID" className="scale-75" />
+                        </div>
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">DEPT-{dStats.id.toString().slice(0, 4)}</p>
                       </div>
                     </div>
@@ -2074,7 +2265,7 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="grid gap-4">
             {departments.map((dept, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none flex items-center justify-between group">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
                     <Tag className="w-6 h-6" />
@@ -2083,6 +2274,7 @@ export const AdminDashboard: React.FC = () => {
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px]">{dept.name}</h3>
                     <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1 truncate">
                        <span className="truncate">{dept.description || 'No description'}</span> • {dept.code || 'DEPT'}
+                       {dept.code && <CopyButton text={dept.code} label="Dept Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />}
                     </p>
                   </div>
                 </div>
@@ -2120,7 +2312,11 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="flex flex-col gap-3">
             {announcements.map((ann, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none group">
+              <div 
+                key={i} 
+                onClick={() => setSelectedAnnouncement(ann)}
+                className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm group cursor-pointer active:scale-[0.99] transition-transform"
+              >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -2137,13 +2333,19 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="flex gap-1 lg:opacity-0 lg:group-hover:opacity-100 transition-all">
                     <button 
-                      onClick={() => handleEditAnnouncement(ann)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditAnnouncement(ann);
+                      }}
                       className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-all"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button 
-                      onClick={() => handleDeleteAnnouncement(ann.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAnnouncement(ann.id);
+                      }}
                       className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -2166,7 +2368,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       ) : (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
               <Settings className="w-4 h-4 text-indigo-500" />
               Attendance Policies
@@ -2369,7 +2571,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Quick Action Link to Approvals if not active */}
       {activeTab === 'workforce' && pendingLeaves.length > 0 && (
-        <div className="p-5 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-3xl text-white shadow-lg dark:shadow-none relative overflow-hidden mt-2">
+        <div className="p-5 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-3xl text-white shadow-lg relative overflow-hidden mt-2">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <AlertTriangle className="w-20 h-20" />
           </div>
@@ -2387,6 +2589,17 @@ export const AdminDashboard: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Floating Action Button for printing (Optional) */}
+      <AnimatePresence>
+        {selectedRecord && (
+          <AttendanceDetailModal 
+            record={selectedRecord}
+            isOpen={!!selectedRecord}
+            onClose={() => setSelectedRecord(null)}
+          />
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
