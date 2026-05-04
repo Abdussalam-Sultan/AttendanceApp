@@ -5,6 +5,8 @@ import Notification from './Notification.js';
 import Branch from './Branch.js';
 import LoginHistory from './LoginHistory.js';
 import Department from './Department.js';
+import SupportContact from './SupportContact.js';
+import SupportRequest from './SupportRequest.js';
 
 // User - Attendance
 User.hasMany(Attendance, { foreignKey: 'userId' });
@@ -30,4 +32,8 @@ User.belongsTo(Branch, { foreignKey: 'branchId' });
 Department.hasMany(User, { foreignKey: 'departmentId' });
 User.belongsTo(Department, { foreignKey: 'departmentId' });
 
-export { User, Attendance, LeaveRequest, Notification, Branch, LoginHistory, Department };
+// User - SupportRequest
+User.hasMany(SupportRequest, { foreignKey: 'userId' });
+SupportRequest.belongsTo(User, { foreignKey: 'userId' });
+
+export { User, Attendance, LeaveRequest, Notification, Branch, LoginHistory, Department, SupportContact, SupportRequest };

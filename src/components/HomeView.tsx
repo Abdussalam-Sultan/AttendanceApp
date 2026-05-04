@@ -17,6 +17,7 @@ interface HomeViewProps {
   onRefreshData: () => void;
   handleGlobalAction: () => void;
   isActionLoading: boolean;
+  refreshKey?: number;
 }
 
 import { useToast } from './ToastProvider';
@@ -30,7 +31,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   todayRecord,
   onRefreshData,
   handleGlobalAction,
-  isActionLoading
+  isActionLoading,
+  refreshKey
 }) => {
   const { confirm } = useToast();
   const [user, setUser] = useState<User | null>(null);
@@ -43,30 +45,68 @@ export const HomeView: React.FC<HomeViewProps> = ({
   // New UI states
   const [showDrawer, setShowDrawer] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
+
+  // --- History Sync for Overlays ---
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      // If we're on HomeView and a popstate happens, we check specifically for our local overlays
+      if (event.state) {
+        if (event.state.drawerOpen === false) setShowDrawer(false);
+        if (event.state.supportOpen === false) setShowSupport(false);
+        if (event.state.announcementOpen === false) setSelectedAnnouncement(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Use separate effects to push state when overlays open
+  useEffect(() => {
+    if (showDrawer) {
+      window.history.pushState({ ...window.history.state, drawerOpen: true }, '');
+    } else if (window.history.state?.drawerOpen) {
+      // If closed manually (not via popstate), we don't necessarily want to go back in history 
+      // depends on the UX. But standard mobile behavior often pushes a state.
+    }
+  }, [showDrawer]);
+
+  useEffect(() => {
+    if (showSupport) {
+      window.history.pushState({ ...window.history.state, supportOpen: true }, '');
+    }
+  }, [showSupport]);
+
+  useEffect(() => {
+    if (selectedAnnouncement) {
+      window.history.pushState({ ...window.history.state, announcementOpen: true }, '');
+    }
+  }, [selectedAnnouncement]);
+  // ---------------------------------
   const [notifications, setNotifications] = useState<any[]>([]); // This might be used elsewhere for display if needed
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
+      if (!silent) setLoading(true);
       const userData = await api.getUser();
       setUser(userData);
-      setLoading(false); // Show layout immediately
+      if (!silent) setLoading(false); // Show layout immediately
 
       // Fire subsequent requests in parallel without blocking
       api.getAttendanceStats().then(setStats).catch(console.error);
-      onRefreshData();
       api.getAnnouncements().then(setAnnouncements).catch(console.error);
       api.getBranchStats().then(setBranchStats).catch(console.error);
       api.getNotifications().then(setNotifications).catch(console.error);
       
     } catch (error) {
       console.error("Failed to fetch home data:", error);
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [refreshKey]);
 
   const handleAction = async () => {
     handleGlobalAction();
@@ -140,7 +180,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         delayChildren: 0.2
       }
     }
-  };
+  } as const;
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20, scale: 0.95 },
@@ -154,7 +194,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         damping: 25
       }
     }
-  };
+  } as const;
 
   const handleActionWithHaptic = (action: any) => {
     if (action.action) {
@@ -339,7 +379,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           {[
             { label: 'Present', value: stats?.present ?? 0, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-500/10' },
             { label: 'Late', value: stats?.late ?? 0, color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-500/10' },
-            { label: 'Absent', value: stats?.absent ?? 0, color: 'text-slate-600 dark:text-slate-400', bgColor: 'bg-slate-50 dark:bg-slate-500/10' },
+            { label: 'Absent', value: stats?.absent ?? 0, color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-500/10' },
             { label: 'Leave', value: stats?.leave ?? 0, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50 dark:bg-indigo-500/10' },
           ].map((stat, idx) => (
             <div key={idx} className="flex flex-col items-center">
@@ -435,14 +475,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed inset-x-5 top-1/2 -translate-y-1/2 max-h-[70vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 shadow-sm">
                   <Bell className="w-8 h-8" />
                 </div>
                 <button 
-                  onClick={() => setSelectedAnnouncement(null)}
+                  onClick={() => {
+                    setSelectedAnnouncement(null);
+                    if (window.history.state?.announcementOpen) window.history.back();
+                  }}
                   className="p-2 bg-slate-50 dark:bg-slate-800 text-slate-400 rounded-full hover:text-slate-600 transition-colors"
                 >
                   <X className="w-6 h-6" />
@@ -483,7 +526,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
         )}
       </AnimatePresence>
 
-      <SupportOverlay show={showSupport} onClose={() => setShowSupport(false)} />
+      <SupportOverlay show={showSupport} onClose={() => {
+        setShowSupport(false);
+        if (window.history.state?.supportOpen) window.history.back();
+      }} />
 
       {/* Navigation Drawer Overlay */}
       <AnimatePresence>
@@ -513,7 +559,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   </div>
                 </div>
                 <button 
-                  onClick={() => setShowDrawer(false)}
+                  onClick={() => {
+                    setShowDrawer(false);
+                    if (window.history.state?.drawerOpen) window.history.back();
+                  }}
                   className="p-2 bg-white dark:bg-slate-800 rounded-xl text-slate-400 shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-transform"
                 >
                   <X className="w-5 h-5" />

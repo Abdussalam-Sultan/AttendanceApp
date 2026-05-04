@@ -18,10 +18,20 @@ const DefaultIcon = L.icon({
   iconAnchor: [12, 41]
 });
 
-export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps> = ({ record, isOpen, onClose }) => {
+export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { currentUser?: any }> = ({ record, isOpen, onClose, currentUser }) => {
   if (!record) return null;
 
-  const user = record.User || record.user;
+  // Robust user data resolution from multiple potential sources
+  const resolvedUser = record.User || record.user || (record.userId === currentUser?.id ? currentUser : null);
+  const user = {
+    name: resolvedUser?.name || record.userName || 'Unknown Employee',
+    employeeId: resolvedUser?.employeeId || record.employeeId || 'N/A',
+    role: resolvedUser?.role || 'Staff',
+    avatar: resolvedUser?.avatar || record.userAvatar || null,
+    department: resolvedUser?.Department?.name || resolvedUser?.department || record.departmentName || 'General',
+    branch: resolvedUser?.Branch?.name || resolvedUser?.branchName || record.branchName || 'Remote'
+  };
+
   const statusColors = {
     present: 'bg-emerald-500',
     late: 'bg-amber-500',
@@ -41,11 +51,11 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps> = ({ re
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[300]"
           />
           <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-x-0 bottom-0 max-h-[92vh] bg-slate-50 dark:bg-slate-950 z-[301] rounded-t-[40px] shadow-2xl flex flex-col overflow-hidden"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-slate-50 dark:bg-slate-950 z-[301] rounded-[40px] shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="px-8 py-6 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
@@ -122,7 +132,11 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps> = ({ re
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Record Status</p>
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${statusColors[record.status] || 'bg-slate-400'}`} />
-                    <p className={`text-xs font-black uppercase tracking-widest ${record.status === 'late' ? 'text-amber-500' : 'text-emerald-500'}`}>
+                    <p className={`text-xs font-black uppercase tracking-widest ${
+                      record.status === 'late' ? 'text-amber-500' : 
+                      record.status === 'absent' ? 'text-red-500' : 
+                      record.status === 'leave' ? 'text-indigo-500' : 'text-emerald-500'
+                    }`}>
                       {record.status}
                     </p>
                   </div>
@@ -138,8 +152,12 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps> = ({ re
                       <Building2 className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Branch/Access Point</p>
-                      <p className="text-sm font-bold text-slate-900 dark:text-white uppercase">{record.branchName || 'Remote Assignment'}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Branch / Department</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white uppercase">
+                        {user.branch} 
+                        <span className="mx-2 text-slate-300">/</span>
+                        {user.department}
+                      </p>
                     </div>
                     {record.latitude && (
                       <div className="ml-auto px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest">

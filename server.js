@@ -16,6 +16,8 @@ import leaveRoutes from './server/routes/leave.js';
 import announcementRoutes from './server/routes/announcement.js';
 import notificationRoutes from './server/routes/notification.js';
 import adminRoutes from './server/routes/admin.js';
+import supportRoutes from './server/routes/support.js';
+import { startAutomations } from './server/services/automation.js';
 
 dotenv.config();
 
@@ -37,6 +39,7 @@ async function startServer() {
   app.use('/api/announcements', announcementRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/support', supportRoutes);
 
   // Database Sync
   try {
@@ -59,6 +62,10 @@ async function startServer() {
         console.log('Default admin seeded successfully.');
       }
     }
+
+    // Start background tasks
+    startAutomations();
+
   } catch (error) {
     console.error('Unable to connect to the database:', error);
     console.log('Tip: Ensure your DB_HOST is accessible from the internet. "localhost" will not work in the preview environment.');

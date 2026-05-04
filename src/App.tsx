@@ -48,6 +48,55 @@ function AppContent() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [todayRecord, setTodayRecord] = useState<any>(null);
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // --- History Navigation Support ---
+  useEffect(() => {
+    // Initial state
+    if (!window.history.state) {
+      window.history.replaceState({ tab: activeTab, showNotifications: false }, '');
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state) {
+        const { tab, showNotifications: showNotifs, attendanceSubTab } = event.state;
+        if (tab) setActiveTab(tab);
+        if (showNotifs !== undefined) setShowNotifications(showNotifs);
+        if (attendanceSubTab) setAttendanceTab(attendanceSubTab);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Sync state changes to history (but only if they didn't come from popstate)
+  // We'll use a simple ref or just compare with current history state
+  useEffect(() => {
+    const currentState = window.history.state;
+    if (!currentState) return;
+
+    const hasChanged = 
+      currentState.tab !== activeTab || 
+      currentState.showNotifications !== showNotifications ||
+      (activeTab === 'attendance' && currentState.attendanceSubTab !== attendanceTab);
+
+    if (hasChanged) {
+      window.history.pushState({ 
+        tab: activeTab, 
+        showNotifications, 
+        attendanceSubTab: activeTab === 'attendance' ? attendanceTab : undefined 
+      }, '');
+    }
+  }, [activeTab, showNotifications, attendanceTab]);
+  // ---------------------------------
+
+  const triggerRefresh = () => setRefreshKey(prev => prev + 1);
+
+  // Scroll to top on view or tab change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeTab, attendanceTab]);
 
   const isCheckedIn = todayRecord && (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
   const isDayCompleted = todayRecord && (todayRecord.checkOut !== '--:--' && !!todayRecord.checkOut);
@@ -86,6 +135,10 @@ function AppContent() {
       }
       await refreshAttendance();
       refreshNotifications();
+      // Add a small delay to ensure backend state is fully committed before child components refetch
+      setTimeout(() => {
+        triggerRefresh();
+      }, 800);
     } catch (err) {
       console.error(err);
     } finally {
@@ -257,9 +310,10 @@ function AppContent() {
           onRefreshData={refreshAttendance}
           handleGlobalAction={handleGlobalCheckInOut}
           isActionLoading={isAttendanceLoading}
+          refreshKey={refreshKey}
         />
       );
-      case 'attendance': return <AttendanceView initialTab={attendanceTab} />;
+      case 'attendance': return <AttendanceView initialTab={attendanceTab} refreshKey={refreshKey} />;
       case 'leave': return <LeaveView />;
       case 'profile': return (
         <ProfileView 
@@ -273,7 +327,7 @@ function AppContent() {
           unreadCount={unreadCount}
         />
       );
-      case 'admin': return <AdminDashboard />;
+      case 'admin': return <AdminDashboard refreshKey={refreshKey} />;
       default: return (
         <HomeView 
           onNavigate={(tab: TabType, subTab?: any) => {
@@ -292,6 +346,7 @@ function AppContent() {
           onRefreshData={refreshAttendance}
           handleGlobalAction={handleGlobalCheckInOut}
           isActionLoading={isAttendanceLoading}
+          refreshKey={refreshKey}
         />
       );
     }
@@ -355,6 +410,7 @@ function AppContent() {
           onClose={() => {
             setShowNotifications(false);
             refreshNotifications();
+            if (window.history.state?.showNotifications) window.history.back();
           }} 
         />
 

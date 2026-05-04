@@ -59,13 +59,34 @@ router.delete('/:id', authenticate, isAdmin, async (req, res) => {
 
 router.get('/', authenticate, async (req, res) => {
   try {
+    const { includeArchived } = req.query;
+    const where = {};
+    if (includeArchived !== 'true') {
+      where.archived = false;
+    }
+
     const announcements = await Announcement.findAll({
+      where,
       order: [['createdAt', 'DESC']],
-      limit: 5
+      limit: 10
     });
     res.send(announcements);
   } catch (error) {
     res.status(500).send(error);
+  }
+});
+
+router.patch('/archive/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const announcement = await Announcement.findByPk(req.params.id);
+    if (!announcement) {
+      return res.status(404).send({ error: 'Announcement not found' });
+    }
+    announcement.archived = req.body.archived !== undefined ? req.body.archived : true;
+    await announcement.save();
+    res.send(announcement);
+  } catch (error) {
+    res.status(400).send(error);
   }
 });
 

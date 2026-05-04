@@ -67,15 +67,23 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     setLoading(true);
     setError(null);
     
+    // Generate or fetch Device ID for binding
+    let deviceId = localStorage.getItem('DOORLOG_DEVICE_ID');
+    if (!deviceId) {
+      deviceId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      localStorage.setItem('DOORLOG_DEVICE_ID', deviceId);
+    }
+    
     try {
       let user;
       const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
+        ? { email: formData.email, password: formData.password, deviceId }
         : { 
             name: formData.name, 
             email: formData.email, 
             password: formData.password,
-            branchId: formData.branchId
+            branchId: formData.branchId,
+            deviceId // Also send for registration so first device is bound
           };
         
       const res = await fetch(isLogin ? '/api/auth/login' : '/api/auth/register', {
@@ -257,15 +265,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                 </>
               )}
             </button>
-            {isLogin && (
-              <button
-                type="button"
-                onClick={() => toast("Biometric hardware not found. Please use password.", "warning")}
-                className="w-20 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-[28px] mt-4 flex items-center justify-center active:scale-95 transition-all"
-              >
-                <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-500" />
-              </button>
-            )}
           </div>
         </form>
 

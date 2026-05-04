@@ -61,6 +61,18 @@ router.delete('/admin/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+router.post('/admin/reset-device/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).send({ error: 'User not found' });
+    
+    await user.update({ deviceId: null });
+    res.send({ message: 'Device binding reset successfully' });
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
 router.patch('/profile', authenticate, upload.single('avatar'), async (req, res) => {
   try {
     const updates = Object.keys(req.body);

@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Branch from '../models/Branch.js';
 import LoginHistory from '../models/LoginHistory.js';
 import jwt from 'jsonwebtoken';
+import SystemSettings from '../models/SystemSettings.js';
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.get('/branches', async (req, res) => {
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, branchId } = req.body;
+    const { name, email, password, branchId, deviceId } = req.body;
     
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
@@ -39,6 +40,7 @@ router.post('/register', async (req, res) => {
       password, 
       role: 'Staff', 
       branchId,
+      deviceId,
       employeeId: `EMP-${Math.floor(1000 + Math.random() * 9000)}` 
     });
     
@@ -71,7 +73,7 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, deviceId } = req.body;
     const user = await User.findOne({ where: { email } });
     
     if (!user) {
@@ -81,6 +83,28 @@ router.post('/login', async (req, res) => {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).send({ error: 'Invalid password. Please try again.' });
+    }
+
+    // Device Binding Logic
+    const settings = await SystemSettings.findOne();
+    const deviceBindingActive = settings?.deviceBindingEnabled === true;
+    
+    if (deviceBindingActive && user.role !== 'Admin') {
+      if (!deviceId) {
+        return res.status(400).send({ error: 'Device identity is required for binding.' });
+      }
+
+      if (user.deviceId && user.deviceId !== deviceId) {
+        return res.status(403).send({ 
+          error: 'DEVICE_BOUND', 
+          message: 'This account is already linked to another device. Please contact admin to authorize a device change.' 
+        });
+      }
+
+      if (!user.deviceId) {
+        // First time binding
+        await user.update({ deviceId });
+      }
     }
 
     // Record login history

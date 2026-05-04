@@ -61,7 +61,14 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
       }
     }
 
+    const { includeArchived } = req.query;
+    const leaveWhere = {};
+    if (includeArchived !== 'true') {
+      leaveWhere.archived = false;
+    }
+
     const history = await LeaveRequest.findAll({
+      where: leaveWhere,
       include: [{ 
         model: User, 
         attributes: ['name', 'employeeId', 'department', 'branchId'],
@@ -80,13 +87,42 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
 
 router.get('/history', authenticate, async (req, res) => {
   try {
+    const { includeArchived } = req.query;
+    const where = { userId: req.user.id };
+    if (includeArchived !== 'true') {
+      where.archived = false;
+    }
     const history = await LeaveRequest.findAll({
-      where: { userId: req.user.id },
+      where,
       order: [['createdAt', 'DESC']]
     });
     res.send(history);
   } catch (error) {
     res.status(500).send(error);
+  }
+});
+
+router.patch('/archive/:id', authenticate, isManager, async (req, res) => {
+  try {
+    const leave = await LeaveRequest.findByPk(req.params.id);
+    if (!leave) return res.status(404).send({ error: 'Leave request not found' });
+    
+    // Safety check for archiving: must be the owner OR an admin/manager (who already passed middleware)
+    // Managers can archive staff leaves in their branch
+    if (req.user.role === 'Manager' && leave.userId !== req.user.id) {
+       const user = await User.findByPk(leave.userId);
+       if (!user || user.branchId !== req.user.branchId) {
+         return res.status(403).send({ error: 'Access denied.' });
+       }
+    } else if (req.user.role === 'Staff' && leave.userId !== req.user.id) {
+      return res.status(403).send({ error: 'Access denied.' });
+    }
+
+    leave.archived = req.body.archived !== undefined ? req.body.archived : true;
+    await leave.save();
+    res.send(leave);
+  } catch (error) {
+    res.status(400).send(error);
   }
 });
 

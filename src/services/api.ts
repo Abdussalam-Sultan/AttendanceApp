@@ -180,9 +180,9 @@ export const api = {
     return result;
   },
 
-  async getAnnouncements() {
+  async getAnnouncements(includeArchived = false) {
     try {
-      const res = await fetch('/api/announcements', {
+      const res = await fetch(`/api/announcements?includeArchived=${includeArchived}`, {
         headers: getHeaders()
       });
       if (!res.ok) return [];
@@ -235,8 +235,8 @@ export const api = {
     return await res.json();
   },
   
-  async getAdminLeaveRequests() {
-    const res = await fetch('/api/leave/admin/all', {
+  async getAdminLeaveRequests(includeArchived = false) {
+    const res = await fetch(`/api/leave/admin/all?includeArchived=${includeArchived}`, {
       headers: getHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch leave requests');
@@ -269,6 +269,16 @@ export const api = {
       headers: getHeaders()
     });
     if (!res.ok) throw new Error('Failed to delete announcement');
+    return await res.json();
+  },
+
+  async archiveAnnouncement(id: string | number, archived = true) {
+    const res = await fetch(`/api/announcements/archive/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ archived })
+    });
+    if (!res.ok) throw new Error('Failed to archive announcement');
     return await res.json();
   },
 
@@ -328,6 +338,16 @@ export const api = {
     return await res.json();
   },
 
+  async updateBranch(id: string | number, data: any) {
+    const res = await fetch(`/api/admin/branches/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to update branch');
+    return await res.json();
+  },
+
   async deleteBranch(id: string) {
     const res = await fetch(`/api/admin/branches/${id}`, {
       method: 'DELETE',
@@ -352,6 +372,16 @@ export const api = {
       body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error('Failed to create department');
+    return await res.json();
+  },
+
+  async updateDepartment(id: string | number, data: any) {
+    const res = await fetch(`/api/admin/departments/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to update department');
     return await res.json();
   },
 
@@ -385,6 +415,15 @@ export const api = {
     return await res.json();
   },
 
+  async resetDeviceBinding(id: string | number) {
+    const res = await fetch(`/api/user/admin/reset-device/${id}`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to reset device binding');
+    return await res.json();
+  },
+
   async updateLeaveStatus(id: string | number, status: 'Approved' | 'Rejected') {
     const res = await fetch(`/api/leave/approve/${id}`, {
       method: 'PATCH',
@@ -395,10 +434,21 @@ export const api = {
     return await res.json();
   },
 
+  async archiveLeaveRequest(id: string | number, archived = true) {
+    const res = await fetch(`/api/leave/archive/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ archived })
+    });
+    if (!res.ok) throw new Error('Failed to archive leave request');
+    return await res.json();
+  },
+
   async getBranchStats() {
     const res = await fetch('/api/attendance/branch-stats', {
       headers: getHeaders()
     });
+    if (res.status === 404) return null;
     if (!res.ok) throw new Error('Failed to fetch branch stats');
     return await res.json();
   },
@@ -412,6 +462,98 @@ export const api = {
       headers: getHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch admin branch stats');
+    return await res.json();
+  },
+
+  async pruneData(olderThan: string, collections: string[]) {
+    const res = await fetch('/api/admin/prune', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ olderThan, collections })
+    });
+    if (!res.ok) throw new Error('Pruning failed');
+    return await res.json();
+  },
+
+  async getSupportContacts() {
+    const res = await fetch('/api/support', {
+      headers: getHeaders()
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  },
+
+  async getAdminSupportContacts() {
+    const res = await fetch('/api/support/admin', {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch admin support contacts');
+    return await res.json();
+  },
+
+  async createSupportContact(contact: any) {
+    const res = await fetch('/api/support', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(contact)
+    });
+    if (!res.ok) throw new Error('Failed to create support contact');
+    return await res.json();
+  },
+
+  async updateSupportContact(id: number | string, contact: any) {
+    const res = await fetch(`/api/support/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(contact)
+    });
+    if (!res.ok) throw new Error('Failed to update support contact');
+    return await res.json();
+  },
+
+  async deleteSupportContact(id: number | string) {
+    const res = await fetch(`/api/support/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to delete support contact');
+    return await res.json();
+  },
+
+  async getSupportRequests() {
+    const res = await fetch('/api/support/requests/all', {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch support requests');
+    return await res.json();
+  },
+
+  async updateSupportRequestStatus(id: number | string, status: string) {
+    const res = await fetch(`/api/support/requests/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error('Failed to update request status');
+    return await res.json();
+  },
+
+  async deleteSupportRequest(id: number | string) {
+    const res = await fetch(`/api/support/requests/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to delete support request');
+    return await res.json();
+  },
+
+  async submitSupportRequest(data: any) {
+    const res = await fetch('/api/support/request', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to submit support request');
     return await res.json();
   },
 

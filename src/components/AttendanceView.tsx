@@ -23,14 +23,16 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface AttendanceViewProps {
   initialTab?: 'Logs' | 'Calendar' | 'Analytics';
+  refreshKey?: number;
 }
 
-export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Logs' }) => {
+export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Logs', refreshKey }) => {
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'Logs' | 'Calendar' | 'Analytics'>(initialTab);
+
   const [viewDate, setViewDate] = useState(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -38,45 +40,86 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
   const [viewMode, setViewMode] = useState<'personal' | 'all'>('personal');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // --- History Sync for Attendance Overlays ---
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state) {
+        if (event.state.attendanceTab) setActiveTab(event.state.attendanceTab);
+        if (event.state.selectedDay === null) setSelectedDay(null);
+        if (event.state.selectedRecordDetail === false) setSelectedRecord(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    const currentState = window.history.state;
+    if (currentState?.attendanceTab !== activeTab) {
+      window.history.pushState({ ...currentState, attendanceTab: activeTab }, '');
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (selectedDay) {
+      window.history.pushState({ ...window.history.state, selectedDay: selectedDay.toISOString() }, '');
+    }
+  }, [selectedDay]);
+
+  useEffect(() => {
+    if (selectedRecord) {
+      window.history.pushState({ ...window.history.state, selectedRecordDetail: true }, '');
+    }
+  }, [selectedRecord]);
+  // --------------------------------------------
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
+
   const [settings, setSettings] = useState<any>(null);
 
   const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'Manager';
 
-  useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
+  const fetchData = async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      const [userRes, statsRes, myRecordsRes, settingsRes] = await Promise.all([
+        api.getUser(),
+        api.getAttendanceStats(),
+        api.getAttendanceRecords(),
+        api.getAttendanceSettings()
+      ]);
+      
+      setCurrentUser(userRes);
+      setStats(statsRes);
+      setSettings(settingsRes);
+      
+      if (userRes.role === 'Admin' || userRes.role === 'Manager') {
+         const allRecords = await api.getAllAttendanceRecords();
+         setRecords(allRecords);
+         setViewMode('all'); // Default to global for admins
+      } else {
+         setRecords(myRecordsRes);
+      }
+    } catch (error) {
+      console.error("Failed to fetch attendance data:", error);
+    } finally {
+      if (!silent) setLoading(false);
     }
-  }, [initialTab]);
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [userRes, statsRes, myRecordsRes, settingsRes] = await Promise.all([
-          api.getUser(),
-          api.getAttendanceStats(),
-          api.getAttendanceRecords(),
-          api.getAttendanceSettings()
-        ]);
-        
-        setCurrentUser(userRes);
-        setStats(statsRes);
-        setSettings(settingsRes);
-        
-        if (userRes.role === 'Admin' || userRes.role === 'Manager') {
-           const allRecords = await api.getAllAttendanceRecords();
-           setRecords(allRecords);
-           setViewMode('all'); // Default to global for admins
-        } else {
-           setRecords(myRecordsRes);
-        }
-      } catch (error) {
-        console.error("Failed to fetch attendance data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
+  }, [refreshKey]);
+
+  // Polling for real-time updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 15000); // Poll every 15 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const filteredRecords = useMemo(() => {
@@ -153,7 +196,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
     switch (status) {
       case 'present': return '#10b981'; // emerald-500
       case 'late': return '#f59e0b';    // amber-500
-      case 'absent': return '#64748b';   // slate-500 (swapped from red to reduce red theme)
+      case 'absent': return '#ef4444';   // red-500
       case 'leave': return '#6366f1';    // indigo-500
       default: return '#94a3b8';
     }
@@ -166,11 +209,15 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
     { name: 'Leave', value: monthStats.leave, color: getStatusColor('leave') },
   ].filter(d => d.value > 0);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
+
   const getStatusStyle = (status: AttendanceStatus) => {
     switch (status) {
       case 'present': return 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
       case 'late': return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
-      case 'absent': return 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20';
+      case 'absent': return 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
       case 'leave': return 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20';
     }
   };
@@ -207,40 +254,40 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
             <div 
               key={record.id} 
               id={`record-${record.id}`}
-              className="bg-white dark:bg-slate-900 p-4 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group relative overflow-hidden cursor-pointer"
+              className="bg-white dark:bg-slate-900 p-4 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex gap-3 sm:gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group relative overflow-hidden cursor-pointer"
               onClick={() => {
                 setSelectedRecord(record);
                 haptics.selection();
               }}
             >
-              {/* Vertical Date Indicator */}
-              <div className="flex flex-col items-center justify-center px-3 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 min-w-[64px] border border-slate-100 dark:border-slate-700/50 transition-colors group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10">
-                <span className="text-xl font-black text-slate-900 dark:text-white leading-none mb-1">{record.date.split(' ')[0]}</span>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
+              {/* Vertical Date Indicator - Compacted for mobile */}
+              <div className="flex flex-col items-center justify-center px-2 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 min-w-[54px] sm:min-w-[64px] border border-slate-100 dark:border-slate-700/50 transition-colors group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 shrink-0">
+                <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-none mb-1">{record.date.split(' ')[0]}</span>
+                <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
                   {new Date(record.date).toLocaleDateString('en-US', { weekday: 'short' })}
                 </span>
               </div>
 
               {/* Information Content */}
-              <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                <div className="space-y-1">
+              <div className="flex-1 min-w-0 flex flex-col justify-center py-0.5">
+                <div className="space-y-1 sm:space-y-1.5">
                   {viewMode === 'all' && user && (
-                    <div className="flex flex-col mb-1.5">
-                       <h3 className="text-sm font-black text-slate-900 dark:text-white truncate leading-tight">
+                    <div className="flex flex-col mb-1 sm:mb-1.5">
+                       <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate leading-tight">
                          {user.name}
                        </h3>
                        <div className="flex items-center gap-1.5 mt-0.5">
-                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                            ID: {user.employeeId}
                          </span>
-                         <CopyButton value={String(user.employeeId)} label="Employee ID" className="scale-[0.65] -ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                         <CopyButton value={String(user.employeeId)} label="Employee ID" className="scale-[0.6] sm:scale-[0.65] -ml-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" />
                        </div>
                     </div>
                   )}
                   
-                  {/* Status Badge - Mobile Priority */}
+                  {/* Status Badge - Mobile Only */}
                   <div className="flex items-center gap-2 sm:hidden">
-                    <div className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${getStatusStyle(record.status)}`}>
+                    <div className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${getStatusStyle(record.status).replace(/border-[a-z-]+ /g, '')}`}>
                       {record.status}
                     </div>
                     {record.lateMinutes > 0 && (
@@ -257,9 +304,9 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                     </div>
 
                     {(viewMode === 'all' || record.branchName) && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/5 rounded-lg border border-indigo-100/50 dark:border-indigo-500/10 max-w-[120px]">
+                      <div className="flex items-center gap-1 sm:px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/5 rounded-lg border border-indigo-100/50 dark:border-indigo-500/10 max-w-[120px] overflow-hidden">
                         <Building2 className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 truncate tracking-tight">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-indigo-600 dark:text-indigo-400 truncate tracking-tight">
                           {user?.Branch?.name || record.branchName || 'Remote'}
                         </span>
                       </div>
@@ -277,7 +324,6 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                   <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 rounded-lg">+{record.lateMinutes}m</span>
                 )}
               </div>
-
             </div>
           );
         })
@@ -451,7 +497,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                              <p className="text-xs font-black text-slate-900 dark:text-white">{(dayRec as any).User?.name || dayRec.user?.name}</p>
                              <div className="flex items-center justify-between group">
                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{(dayRec as any).User?.employeeId || dayRec.user?.employeeId}</p>
-                               <CopyButton text={String((dayRec as any).User?.employeeId || dayRec.user?.employeeId)} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
+                               <CopyButton value={String((dayRec as any).User?.employeeId || dayRec.user?.employeeId)} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
                              </div>
                            </div>
                            <div className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border shrink-0 ${getStatusStyle(dayRec.status)}`}>
@@ -524,7 +570,11 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
 
   const renderAnalytics = () => {
     const totalDays = monthStats.total || monthStats.present + monthStats.late + monthStats.absent + monthStats.leave;
-    const efficiency = totalDays > 0 ? Math.round(((monthStats.present + monthStats.late) / totalDays) * 100) : 0;
+    
+    // Improved weighted efficiency score
+    // Present = 100%, Late = 85%, Absent = 0%, Leave = 100% (approved leave counts as fulfillment)
+    const weightedScore = (monthStats.present * 1) + (monthStats.late * 0.85) + (monthStats.leave * 1);
+    const efficiency = totalDays > 0 ? Math.round((weightedScore / totalDays) * 100) : 0;
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -900,6 +950,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
         record={selectedRecord}
         isOpen={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
+        currentUser={currentUser}
       />
     </div>
   );

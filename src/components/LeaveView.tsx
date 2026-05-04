@@ -14,6 +14,38 @@ export const LeaveView: React.FC = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'All' | 'Approved' | 'Rejected' | 'Pending'>('All');
   const [showConfirmation, setShowConfirmation] = useState(false);
+
+  // --- History Sync for Leave Overlays ---
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state) {
+        if (event.state.leaveFormOpen === false) setShowForm(false);
+        if (event.state.leaveHistoryOpen === false) setShowHistory(false);
+        if (event.state.leaveConfirmationOpen === false) setShowConfirmation(false);
+        if (event.state.leaveCameraOpen === false) setShowCamera(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (showForm) window.history.pushState({ ...window.history.state, leaveFormOpen: true }, '');
+  }, [showForm]);
+
+  useEffect(() => {
+    if (showHistory) window.history.pushState({ ...window.history.state, leaveHistoryOpen: true }, '');
+  }, [showHistory]);
+
+  useEffect(() => {
+    if (showConfirmation) window.history.pushState({ ...window.history.state, leaveConfirmationOpen: true }, '');
+  }, [showConfirmation]);
+
+  useEffect(() => {
+    if (showCamera) window.history.pushState({ ...window.history.state, leaveCameraOpen: true }, '');
+  }, [showCamera]);
+  // ----------------------------------------
   const [leaveHistory, setLeaveHistory] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);

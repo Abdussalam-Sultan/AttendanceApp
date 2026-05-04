@@ -92,7 +92,7 @@ router.get('/admin/all-stats', authenticate, isManager, async (req, res) => {
           attributes: [],
           where: req.user.role === 'Manager' ? { branchId: req.user.branchId } : {} 
         }],
-        group: ['status'],
+        group: ['Attendance.status'],
         raw: true
       }),
       User.count({ where: userWhereClause })
@@ -136,7 +136,7 @@ router.get('/admin/all-records', authenticate, isManager, async (req, res) => {
     const records = await Attendance.findAll({
       include: [{ 
         model: User, 
-        attributes: ['name', 'employeeId', 'department', 'branchId'],
+        attributes: ['name', 'employeeId', 'department', 'branchId', 'role', 'avatar'],
         where: userWhere,
         include: [
           { model: Branch, attributes: ['name'] },
@@ -172,7 +172,7 @@ router.get('/branch-stats', authenticate, async (req, res) => {
           attributes: [],
           where: { branchId: user.branchId } 
         }],
-        group: ['status'],
+        group: ['Attendance.status'],
         raw: true
       }),
       User.count({ where: { branchId: user.branchId } })
@@ -223,16 +223,27 @@ router.get('/stats', authenticate, async (req, res) => {
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
       where: { userId: req.user.id },
-      group: ['status'],
+      group: ['Attendance.status'],
       raw: true
     });
+
+    // Dynamic working days calculation (weekdays in current month)
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let workingDays = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day).getDay();
+      if (d !== 0 && d !== 6) workingDays++; // Monday-Friday
+    }
 
     const stats = {
       present: 0,
       late: 0,
       absent: 0,
       leave: 0,
-      totalWorkingDays: 24 
+      totalWorkingDays: workingDays || 22
     };
 
     counts.forEach(c => {
@@ -252,6 +263,10 @@ router.get('/records', authenticate, async (req, res) => {
   try {
     const records = await Attendance.findAll({
       where: { userId: req.user.id },
+      include: [{ 
+        model: User, 
+        attributes: ['name', 'employeeId', 'role', 'avatar'] 
+      }],
       order: [['createdAt', 'DESC']],
       limit: 50 // Limit user history to last 50 records
     });
@@ -287,12 +302,15 @@ router.post('/check-in', authenticate, async (req, res) => {
     let settings = await SystemSettings.findOne();
     if (!settings) settings = await SystemSettings.create({});
 
+    const user = await User.findByPk(req.user.id, {
+      include: [
+        { model: Branch },
+        { model: Department }
+      ]
+    });
+
     // Geofencing Check
     if (settings.geofencingEnabled) {
-      const user = await User.findByPk(req.user.id, {
-        include: [{ model: Branch }]
-      });
-      
       if (user && user.Branch && user.Branch.latitude && user.Branch.longitude) {
         if (!latitude || !longitude) {
           return res.status(400).send({ 
@@ -347,7 +365,11 @@ router.post('/check-in', authenticate, async (req, res) => {
       status: status,
       checkIn: timeStr,
       checkOut: '--:--',
-      lateMinutes: lateMinutes
+      lateMinutes: lateMinutes,
+      latitude: latitude,
+      longitude: longitude,
+      branchName: user?.Branch?.name || 'Remote',
+      departmentName: user?.Department?.name || user?.department || 'General'
     });
 
     // Create notification for user

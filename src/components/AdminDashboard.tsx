@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter, Download, BellPlus, X, Send, Megaphone, Settings, ShieldCheck, Trash2, Edit2, UserX, Tag, Building2, MapPin, UserPlus, Shield, ArrowRight, User, Eye, Mail, Table, CheckSquare, Square, ChevronDown, Check, Crown, AlertCircle, Calendar, FileText, Loader2, Navigation } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter, Download, BellPlus, X, Send, Megaphone, Settings, ShieldCheck, Trash2, Edit2, UserX, Tag, Building2, MapPin, UserPlus, Shield, ArrowRight, User, Eye, Mail, Table, CheckSquare, Square, ChevronDown, Check, Crown, AlertCircle, Calendar, FileText, Loader2, Navigation, HelpCircle, MessageSquare, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -38,11 +38,12 @@ const LocationPickerMap = ({ onSelect }: { onSelect: (lat: number, lng: number) 
 import { format } from 'date-fns';
 import { CustomDropdown } from './CustomDropdown';
 import { api } from '../services/api';
+import { haptics } from '../lib/haptics';
 import { CopyButton } from './CopyButton';
 
 import { useToast } from './ToastProvider';
 
-export const AdminDashboard: React.FC = () => {
+export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }) => {
   const { toast, confirm } = useToast();
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<any>({
@@ -64,7 +65,13 @@ export const AdminDashboard: React.FC = () => {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'workforce' | 'approvals' | 'announcements' | 'employees' | 'branches' | 'departments' | 'settings' | 'support'>('workforce');
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
 
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(searchQuery), 300);
@@ -76,11 +83,11 @@ export const AdminDashboard: React.FC = () => {
     end: new Date().toISOString().split('T')[0] 
   });
   const [selectedDeptsForComp, setSelectedDeptsForComp] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'workforce' | 'approvals' | 'announcements' | 'employees' | 'branches' | 'departments' | 'settings'>('workforce');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
   
   // Branch state
   const [showBranchModal, setShowBranchModal] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<any>(null);
   const [newBranch, setNewBranch] = useState({ name: '', location: '', code: '', latitude: null as number | null, longitude: null as number | null });
   const [branchLoading, setBranchLoading] = useState(false);
   const [locationResults, setLocationResults] = useState<any[]>([]);
@@ -90,10 +97,19 @@ export const AdminDashboard: React.FC = () => {
 
   // Department state
   const [showDeptModal, setShowDeptModal] = useState(false);
+  const [editingDept, setEditingDept] = useState<any>(null);
   const [newDept, setNewDept] = useState({ name: '', description: '', code: '' });
   const [deptLoading, setDeptLoading] = useState(false);
   const [compareDepts, setCompareDepts] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState<string | null>(null);
+  
+  const [showArchivedAnnouncements, setShowArchivedAnnouncements] = useState(false);
+  const [showArchivedLeaves, setShowArchivedLeaves] = useState(false);
+  const [pruneSettings, setPruneSettings] = useState({ 
+    olderThan: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().split('T')[0],
+    collections: ['announcements', 'leaves'] as string[]
+  });
+  const [pruningLoading, setPruningLoading] = useState(false);
 
   // User edit state (for admin)
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -114,19 +130,79 @@ export const AdminDashboard: React.FC = () => {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<any | null>(null);
   const [isLauncherOpen, setIsLauncherOpen] = useState(true);
 
-  const fetchData = async () => {
+  // Support states
+  const [supportContacts, setSupportContacts] = useState<any[]>([]);
+  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [supportSubTab, setSupportSubTab] = useState<'channels' | 'tickets'>('tickets');
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [editingSupport, setEditingSupport] = useState<any>(null);
+  const [newSupport, setNewSupport] = useState({ type: 'email', label: '', value: '', iconName: 'Mail', isActive: true });
+  const [supportLoading, setSupportLoading] = useState(false);
+
+  // --- History Sync for Admin Overlays ---
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state) {
+        if (event.state.adminTab) setActiveTab(event.state.adminTab);
+        if (event.state.branchModalOpen === false) setShowBranchModal(false);
+        if (event.state.deptModalOpen === false) setShowDeptModal(false);
+        if (event.state.userModalOpen === false) setShowUserModal(false);
+        if (event.state.announceModalOpen === false) setShowAnnounceModal(false);
+        if (event.state.supportModalOpen === false) setShowSupportModal(false);
+        if (event.state.recordDetailOpen === false) setSelectedRecord(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    const currentState = window.history.state;
+    if (currentState?.adminTab !== activeTab) {
+      window.history.pushState({ ...currentState, adminTab: activeTab }, '');
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (showBranchModal) window.history.pushState({ ...window.history.state, branchModalOpen: true }, '');
+  }, [showBranchModal]);
+
+  useEffect(() => {
+    if (showDeptModal) window.history.pushState({ ...window.history.state, deptModalOpen: true }, '');
+  }, [showDeptModal]);
+
+  useEffect(() => {
+    if (showUserModal) window.history.pushState({ ...window.history.state, userModalOpen: true }, '');
+  }, [showUserModal]);
+
+  useEffect(() => {
+    if (showAnnounceModal) window.history.pushState({ ...window.history.state, announceModalOpen: true }, '');
+  }, [showAnnounceModal]);
+
+  useEffect(() => {
+    if (showSupportModal) window.history.pushState({ ...window.history.state, supportModalOpen: true }, '');
+  }, [showSupportModal]);
+
+  useEffect(() => {
+    if (selectedRecord) window.history.pushState({ ...window.history.state, recordDetailOpen: true }, '');
+  }, [selectedRecord]);
+  // ----------------------------------------
+
+  const fetchData = async (silent = false) => {
     try {
+      if (!silent) setLoading(true);
       const userData = await api.getUser();
       setUser(userData);
-      setLoading(false); // Move this up to show the layout immediately
+      if (!silent) setLoading(false); 
 
       // Fire subsequent requests in parallel without blocking the main UI
       // Use individual setters to populate data as it arrives
       api.getAdminStats().then(setStats).catch(console.error);
       api.getAllAttendanceRecords().then(setRecords).catch(console.error);
-      api.getAdminLeaveRequests().then(setLeaveRequests).catch(console.error);
+      api.getAdminLeaveRequests(showArchivedLeaves).then(setLeaveRequests).catch(console.error);
       api.getAttendanceSettings().then(setSettings).catch(console.error);
-      api.getAnnouncements().then(setAnnouncements).catch(console.error);
+      api.getAnnouncements(showArchivedAnnouncements).then(setAnnouncements).catch(console.error);
       api.getAdminUsers().then(setUsers).catch(console.error);
       api.getAdminBranchStats(dateRange.start, dateRange.end).then(setBranchStats).catch(console.error);
       api.getAdminDepartmentStats(dateRange.start, dateRange.end).then(setDepartmentStats).catch(console.error);
@@ -134,6 +210,8 @@ export const AdminDashboard: React.FC = () => {
 
       if (userData.role === 'Admin') {
         api.getBranches().then(setBranches).catch(console.error);
+        api.getAdminSupportContacts().then(setSupportContacts).catch(console.error);
+        api.getSupportRequests().then(setSupportTickets).catch(console.error);
       }
     } catch (error) {
       console.error("Failed to fetch admin data:", error);
@@ -201,21 +279,43 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleCreateBranch = async (e: React.FormEvent) => {
+  const handleSaveBranch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBranch.name) return;
     setBranchLoading(true);
     try {
-      const data = await api.createBranch(newBranch);
-      setBranches(prev => [...prev, data]);
+      if (editingBranch) {
+        const data = await api.updateBranch(editingBranch.id, newBranch);
+        setBranches(prev => prev.map(b => b.id === data.id ? { ...b, ...data } : b));
+        toast("Branch updated successfully!", "success");
+      } else {
+        const data = await api.createBranch(newBranch);
+        setBranches(prev => [...prev, data]);
+        toast("Branch created successfully!", "success");
+      }
       setShowBranchModal(false);
+      setEditingBranch(null);
       setNewBranch({ name: '', location: '', code: '', latitude: null, longitude: null });
-      toast("Branch created successfully!", "success");
     } catch (error) {
-      toast("Failed to create branch", "error");
+      toast("Failed to save branch", "error");
     } finally {
       setBranchLoading(false);
     }
+  };
+
+  const handleEditBranch = (branch: any) => {
+    setEditingBranch(branch);
+    setNewBranch({ 
+      name: branch.name, 
+      location: branch.location || '', 
+      code: branch.code || '', 
+      latitude: branch.latitude, 
+      longitude: branch.longitude 
+    });
+    if (branch.latitude && branch.longitude) {
+      setMapCenter([branch.latitude, branch.longitude]);
+    }
+    setShowBranchModal(true);
   };
 
   const handleDeleteBranch = async (id: string) => {
@@ -230,23 +330,40 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleCreateDept = async (e: React.FormEvent) => {
+  const handleSaveDept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDept.name) return;
     setDeptLoading(true);
     try {
-      const data = await api.createDepartment(newDept);
-      setDepartments(prev => [...prev, data]);
+      if (editingDept) {
+        const data = await api.updateDepartment(editingDept.id, newDept);
+        setDepartments(prev => prev.map(d => d.id === data.id ? { ...d, ...data } : d));
+        toast("Department updated successfully!", "success");
+      } else {
+        const data = await api.createDepartment(newDept);
+        setDepartments(prev => [...prev, data]);
+        toast("Department created successfully!", "success");
+      }
       setShowDeptModal(false);
+      setEditingDept(null);
       setNewDept({ name: '', description: '', code: '' });
-      toast("Department created successfully!", "success");
       // Refresh stats
       api.getAdminDepartmentStats(dateRange.start, dateRange.end).then(setDepartmentStats).catch(console.error);
     } catch (error) {
-      toast("Failed to create department", "error");
+      toast("Failed to save department", "error");
     } finally {
       setDeptLoading(false);
     }
+  };
+
+  const handleEditDept = (dept: any) => {
+    setEditingDept(dept);
+    setNewDept({ 
+      name: dept.name, 
+      description: dept.description || '', 
+      code: dept.code || '' 
+    });
+    setShowDeptModal(true);
   };
 
   const handleDeleteDept = async (id: string) => {
@@ -341,6 +458,13 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+  }, [refreshKey]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 30000); // Admin can poll every 30s
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -353,6 +477,18 @@ export const AdminDashboard: React.FC = () => {
       api.getAdminDepartmentStats(dateRange.start, dateRange.end).then(setDepartmentStats).catch(console.error);
     }
   }, [dateRange]);
+
+  useEffect(() => {
+    if (user) {
+      api.getAnnouncements(showArchivedAnnouncements).then(setAnnouncements).catch(console.error);
+    }
+  }, [showArchivedAnnouncements]);
+
+  useEffect(() => {
+    if (user) {
+      api.getAdminLeaveRequests(showArchivedLeaves).then(setLeaveRequests).catch(console.error);
+    }
+  }, [showArchivedLeaves]);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -392,6 +528,23 @@ export const AdminDashboard: React.FC = () => {
       toast("Failed to update leave request", "error");
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handleArchiveLeave = async (id: string | number, currentStatus: boolean) => {
+    const action = currentStatus ? "Unarchive" : "Archive";
+    const confirmed = await confirm(
+      `${action} Request`, 
+      `Are you sure you want to ${action.toLowerCase()} this leave request?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.archiveLeaveRequest(id, !currentStatus);
+      setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, archived: !currentStatus } : req));
+      toast(`Leave request ${action.toLowerCase()}d`, "success");
+    } catch (error) {
+      toast(`Failed to ${action.toLowerCase()} leave request`, "error");
     }
   };
 
@@ -445,6 +598,124 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleResetDevice = async (userId: string | number) => {
+    const confirmed = await confirm("Reset Device Binding", "Are you sure you want to reset this user's device binding? They will be prompted to bind their current device upon next login.");
+    if (!confirmed) return;
+    try {
+      setUpdatingId(userId);
+      await api.resetDeviceBinding(userId);
+      toast("Device binding reset successfully.", "success");
+      // Refresh user in local state
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, deviceId: null } : u));
+      if (selectedUser?.id === userId) {
+        setSelectedUser({ ...selectedUser, deviceId: null });
+      }
+    } catch (err: any) {
+      toast(err.message || "Failed to reset device binding", "error");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleArchiveAnnouncement = async (id: number | string, currentStatus: boolean) => {
+    const action = currentStatus ? "Unarchive" : "Archive";
+    const confirmed = await confirm(
+      `${action} Announcement`, 
+      `Are you sure you want to ${action.toLowerCase()} this announcement? It will be hidden from the general feed.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.archiveAnnouncement(id, !currentStatus);
+      setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, archived: !currentStatus } : a));
+      toast(`Announcement ${action.toLowerCase()}d`, "success");
+    } catch (error) {
+      toast(`Failed to ${action.toLowerCase()} announcement`, "error");
+    }
+  };
+
+  const handlePruneData = async () => {
+    if (pruneSettings.collections.length === 0) {
+      toast("Select at least one collection to prune", "warning");
+      return;
+    }
+
+    const confirmed = await confirm(
+      "PERMANENT DATA PRUNING", 
+      `This will PERMANENTLY DELETE all selected records older than ${pruneSettings.olderThan}. This action cannot be undone. Background logs, documents, and records will be physically removed from storage to save space.`
+    );
+    if (!confirmed) return;
+
+    setPruningLoading(true);
+    try {
+      await api.pruneData(pruneSettings.olderThan, pruneSettings.collections);
+      toast("Data pruning successful. Your database is now cleaner!", "success");
+      fetchData();
+    } catch (error) {
+      toast("Pruning failed", "error");
+    } finally {
+      setPruningLoading(false);
+    }
+  };
+
+  const handleSaveSupport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSupport.label || !newSupport.value) return;
+    setSupportLoading(true);
+    try {
+      if (editingSupport) {
+        const data = await api.updateSupportContact(editingSupport.id, newSupport);
+        setSupportContacts(prev => prev.map(c => c.id === data.id ? data : c));
+        toast("Support contact updated", "success");
+      } else {
+        const data = await api.createSupportContact(newSupport);
+        setSupportContacts(prev => [...prev, data]);
+        toast("Support contact added", "success");
+      }
+      setShowSupportModal(false);
+      setEditingSupport(null);
+      setNewSupport({ type: 'email', label: '', value: '', iconName: 'Mail', isActive: true });
+    } catch (error) {
+      toast("Failed to save support contact", "error");
+    } finally {
+      setSupportLoading(false);
+    }
+  };
+
+  const handleDeleteSupport = async (id: number | string) => {
+    const confirmed = await confirm("Delete Contact", "Are you sure you want to delete this support contact?");
+    if (!confirmed) return;
+    try {
+      await api.deleteSupportContact(id);
+      setSupportContacts(prev => prev.filter(c => c.id !== id));
+      toast("Support contact deleted", "success");
+    } catch (error) {
+      toast("Failed to delete contact", "error");
+    }
+  };
+
+  const handleUpdateTicketStatus = async (id: number | string, status: string) => {
+    try {
+      await api.updateSupportRequestStatus(id, status);
+      setSupportTickets(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+      toast(`Ticket marked as ${status}`, "success");
+    } catch (error) {
+      toast("Failed to update ticket status", "error");
+    }
+  };
+
+  const handleDeleteTicket = async (id: number | string) => {
+    const confirmed = await confirm("Delete Ticket", "Permanently remove this support request?");
+    if (!confirmed) return;
+    try {
+      await api.deleteSupportRequest(id);
+      setSupportTickets(prev => prev.filter(t => t.id !== id));
+      toast("Ticket deleted", "success");
+    } catch (error) {
+      toast("Failed to delete ticket", "error");
+    }
+  };
+
   const handleDeleteUser = async (user: any) => {
     const confirmed = await confirm("Delete Employee", `Are you sure you want to delete ${user.name}? This cannot be undone.`);
     if (!confirmed) return;
@@ -483,8 +754,10 @@ export const AdminDashboard: React.FC = () => {
       "Status", 
       "Late Minutes",
       "Location Verified",
+      "Coordinates",
       "Address",
-      "Reference ID"
+      "Reference ID",
+      "Device Type"
     ];
 
     const rows = filteredRecords.map(record => {
@@ -519,8 +792,10 @@ export const AdminDashboard: React.FC = () => {
         (record.status || 'Unknown').toUpperCase(),
         record.lateMinutes || 0,
         record.latitude ? "YES" : "NO",
+        `"${record.latitude || ''}, ${record.longitude || ''}"`,
         `"${(record.address || 'N/A').replace(/"/g, '""')}"`,
-        `"${record.id}"`
+        `"${record.id}"`,
+        `"${record.deviceType || 'Mobile'}"`
       ];
 
       return rowData;
@@ -590,7 +865,8 @@ export const AdminDashboard: React.FC = () => {
   const totalEmployees = stats?.totalEmployees || 0;
   const activeToday = stats?.activeToday || 0;
   const lateCount = stats?.late || 0;
-  const absentLeave = (stats?.absent || 0) + (stats?.leave || 0);
+  const absentCount = stats?.absent || 0;
+  const leaveCount = stats?.leave || 0;
 
   const listContainerVariants = {
     hidden: { opacity: 0 },
@@ -598,7 +874,7 @@ export const AdminDashboard: React.FC = () => {
       opacity: 1,
       transition: { staggerChildren: 0.05, delayChildren: 0.1 }
     }
-  };
+  } as const;
 
   const listItemVariants = {
     hidden: { opacity: 0, y: 10, scale: 0.98 },
@@ -608,7 +884,7 @@ export const AdminDashboard: React.FC = () => {
       scale: 1,
       transition: { type: 'spring', stiffness: 300, damping: 30 }
     }
-  };
+  } as const;
 
   const MemoizedEmployeeCard = React.memo(({ emp, index }: { emp: any, index: number }) => (
     <motion.div
@@ -686,20 +962,21 @@ export const AdminDashboard: React.FC = () => {
       className="space-y-8"
     >
       {/* Stats Grid */}
-      <motion.div variants={listItemVariants} className="grid grid-cols-2 gap-4">
+      <motion.div variants={listItemVariants} className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Staff', value: totalEmployees, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
           { label: 'Active', value: activeToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'Late', value: lateCount, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'Absent', value: absentLeave, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' }
+          { label: 'Absent', value: absentCount, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: 'Leave', value: leaveCount, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' }
         ].map((stat, i) => (
           <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-xl ${stat.bg} dark:bg-opacity-10 flex items-center justify-center`}>
-              <stat.icon className={`w-4 h-4 ${stat.color}`} />
+            <div className={`w-10 h-10 shrink-0 rounded-2xl ${stat.bg} dark:bg-opacity-10 flex items-center justify-center shadow-sm`}>
+              <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-black text-slate-900 dark:text-white leading-none mb-0.5">{stat.value}</p>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{stat.label}</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{stat.label}</p>
             </div>
           </div>
         ))}
@@ -748,6 +1025,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'departments', label: 'Departments', icon: Tag, role: 'Admin', color: 'text-indigo-600', bg: 'bg-indigo-50' },
             { id: 'announcements', label: 'Newsroom', icon: Megaphone, role: 'Any', color: 'text-blue-600', bg: 'bg-blue-50' },
             { id: 'settings', label: 'Settings', icon: Settings, role: 'Admin', color: 'text-slate-600', bg: 'bg-slate-100' },
+            { id: 'support', label: 'Support Desk', icon: HelpCircle, role: 'Admin', color: 'text-emerald-600', bg: 'bg-emerald-50' },
           ].filter(m => m.role === 'Any' || user?.role === m.role).map(module => (
             <button
               key={module.id}
@@ -842,13 +1120,12 @@ export const AdminDashboard: React.FC = () => {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100]"
             />
             <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8 flex flex-col"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 flex flex-col overflow-hidden"
             >
-              <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto mb-8"></div>
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex justify-between items-center mb-6 mt-2">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-xl">
                     <Megaphone className="w-5 h-5" />
@@ -934,7 +1211,7 @@ export const AdminDashboard: React.FC = () => {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed inset-x-5 top-1/2 -translate-y-1/2 max-h-[70vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 shadow-sm">
@@ -994,21 +1271,21 @@ export const AdminDashboard: React.FC = () => {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100]"
             />
             <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-indigo-600" /> New Branch
+                  <Building2 className="w-5 h-5 text-indigo-600" /> {editingBranch ? 'Edit Branch' : 'New Branch'}
                 </h2>
                 <button onClick={() => setShowBranchModal(false)}>
                   <X className="w-6 h-6 text-slate-400" />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateBranch} className="space-y-4">
+              <form onSubmit={handleSaveBranch} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Branch Name</label>
                   <input 
@@ -1123,7 +1400,7 @@ export const AdminDashboard: React.FC = () => {
                   disabled={branchLoading}
                   className="w-full bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-50 mt-4"
                 >
-                  {branchLoading ? 'Creating...' : 'Register Branch'}
+                  {branchLoading ? 'Saving...' : (editingBranch ? 'Update Branch' : 'Register Branch')}
                 </button>
               </form>
             </motion.div>
@@ -1143,21 +1420,21 @@ export const AdminDashboard: React.FC = () => {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100]"
             />
             <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Tag className="w-5 h-5 text-indigo-600" /> New Department
+                  <Tag className="w-5 h-5 text-indigo-600" /> {editingDept ? 'Edit Department' : 'New Department'}
                 </h2>
                 <button onClick={() => setShowDeptModal(false)}>
                   <X className="w-6 h-6 text-slate-400" />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateDept} className="space-y-4">
+              <form onSubmit={handleSaveDept} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Department Name</label>
                   <input 
@@ -1194,7 +1471,7 @@ export const AdminDashboard: React.FC = () => {
                   disabled={deptLoading}
                   className="w-full bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-50 mt-4"
                 >
-                  {deptLoading ? 'Creating...' : 'Create Department'}
+                  {deptLoading ? 'Saving...' : (editingDept ? 'Update Department' : 'Create Department')}
                 </button>
               </form>
             </motion.div>
@@ -1214,10 +1491,10 @@ export const AdminDashboard: React.FC = () => {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100]"
             />
             <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-white dark:bg-slate-900 z-[101] rounded-t-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -1437,10 +1714,10 @@ export const AdminDashboard: React.FC = () => {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100]"
             />
             <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-t-[40px] shadow-2xl overflow-y-auto no-scrollbar"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-[40px] shadow-2xl overflow-y-auto no-scrollbar"
             >
               <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 px-8 py-6 flex justify-between items-center border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-4">
@@ -1514,9 +1791,40 @@ export const AdminDashboard: React.FC = () => {
                               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">{item.label}</p>
                               <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate">{item.value}</p>
                             </div>
-                            <CopyButton text={String(item.value)} label={item.label} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <CopyButton value={String(item.value)} label={item.label} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* Additional Metadata */}
+                <div className="space-y-4">
+                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Device Security</h3>
+                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
+                        <p className={`text-sm font-black ${selectedUser.deviceId ? 'text-emerald-500' : 'text-slate-400'}`}>
+                          {selectedUser.deviceId ? 'DEVICE BOUND' : 'NOT BOUND'}
+                        </p>
+                        {selectedUser.deviceId && (
+                          <p className="text-[9px] font-medium text-slate-400 mt-1 italic max-w-[180px]">
+                            Account is locked to: <span className="font-bold text-slate-500">{selectedUser.deviceId.slice(0, 12)}...</span>
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleResetDevice(selectedUser.id)}
+                        disabled={!selectedUser.deviceId || updatingId === selectedUser.id}
+                        className={`px-4 py-2 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all ${
+                          selectedUser.deviceId 
+                            ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' 
+                            : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                        }`}
+                      >
+                        {updatingId === selectedUser.id ? 'Resetting...' : 'Reset Binding'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1528,7 +1836,7 @@ export const AdminDashboard: React.FC = () => {
                       <div className="flex justify-between items-start">
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Emergency Contact</p>
-                          <CopyButton text={selectedUser.emergencyContact || ''} label="Emergency Contact" className="scale-75" />
+                          <CopyButton value={selectedUser.emergencyContact || ''} label="Emergency Contact" className="scale-75" />
                         </div>
                         <p className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">
                           {selectedUser.emergencyContact || 'Not Provided'}
@@ -1710,7 +2018,202 @@ export const AdminDashboard: React.FC = () => {
                 )}
               </div>
 
-              {activeTab === 'workforce' ? (
+              {activeTab === 'support' && user?.role === 'Admin' ? (
+                <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <div className="flex justify-between items-center px-2">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-900 dark:text-white">Support Desk</h2>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Help center management</p>
+                    </div>
+                    {supportSubTab === 'channels' && (
+                      <button 
+                        onClick={() => {
+                          setEditingSupport(null);
+                          setNewSupport({ type: 'email', label: '', value: '', iconName: 'Mail', isActive: true });
+                          setShowSupportModal(true);
+                          haptics.impact();
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-indigo-100"
+                      >
+                        <UserPlus className="w-4 h-4" /> Add Channel
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sub Tabs */}
+                  <div className="flex gap-2 bg-white dark:bg-slate-900 p-1.5 rounded-[24px] border border-slate-100 dark:border-slate-800 shadow-sm self-start">
+                    {[
+                      { id: 'tickets' as const, label: 'Tickets', count: supportTickets.filter(t => t.status === 'pending').length },
+                      { id: 'channels' as const, label: 'Channels', count: supportContacts.length }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setSupportSubTab(tab.id)}
+                        className={`px-4 py-2 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2 ${
+                          supportSubTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {tab.label}
+                        {tab.count > 0 && (
+                          <span className={`px-1.5 py-0.5 rounded-full text-[8px] ${
+                            supportSubTab === tab.id ? 'bg-white text-indigo-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                          }`}>
+                            {tab.count}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {supportSubTab === 'channels' ? (
+                    <div className="grid gap-4">
+                      {supportContacts.map((contact) => (
+                        <div key={contact.id} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                              contact.isActive ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                            }`}>
+                              <Mail className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-1">{contact.label}</h3>
+                              <p className="text-[11px] font-medium text-slate-400 truncate max-w-[200px]">{contact.value}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                  contact.isActive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                                }`}>
+                                  {contact.isActive ? 'Active' : 'Hidden'}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">{contact.type}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={() => {
+                                setEditingSupport(contact);
+                                setNewSupport({ ...contact });
+                                setShowSupportModal(true);
+                                haptics.impact();
+                              }}
+                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteSupport(contact.id)}
+                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {supportContacts.length === 0 && (
+                        <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-4 opacity-50">
+                          <HelpCircle className="w-12 h-12" />
+                          <p className="text-[10px] font-bold uppercase tracking-widest italic text-center">
+                            No support channels defined.<br/>Define contacts for your staff to reach out.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {supportTickets.map((ticket) => (
+                        <div key={ticket.id} className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4 group">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 shadow-sm overflow-hidden">
+                                {ticket.User?.avatar ? (
+                                  <img src={ticket.User.avatar} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                                    <UserIcon className="w-5 h-5" />
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <h3 className="text-xs font-black text-slate-900 dark:text-white leading-none mb-1">{ticket.User?.name || 'Unknown User'}</h3>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{ticket.User?.employeeId || 'No ID'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[8px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
+                                ticket.status === 'pending' ? 'bg-amber-50 text-amber-600' :
+                                ticket.status === 'resolved' ? 'bg-emerald-50 text-emerald-600' :
+                                'bg-slate-100 text-slate-500'
+                              }`}>
+                                {ticket.status}
+                              </span>
+                              <button 
+                                onClick={() => handleDeleteTicket(ticket.id)}
+                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl">
+                            <div className="flex items-center gap-2 mb-2">
+                               <span className="px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded text-[8px] font-bold uppercase">
+                                 {ticket.category}
+                               </span>
+                               <span className="text-[10px] font-bold text-slate-900 dark:text-white truncate">
+                                 {ticket.subject}
+                               </span>
+                            </div>
+                            <p className="text-[11px] font-medium text-slate-600 dark:text-slate-400 leading-relaxed italic">
+                              "{ticket.message}"
+                            </p>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase mt-3 tracking-widest">
+                              Submitted {new Date(ticket.createdAt).toLocaleString()}
+                            </p>
+                          </div>
+
+                          <div className="flex gap-2">
+                            {ticket.status === 'pending' && (
+                              <button 
+                                onClick={() => handleUpdateTicketStatus(ticket.id, 'resolved')}
+                                className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-emerald-100 dark:shadow-none"
+                              >
+                                Mark Resolved
+                              </button>
+                            )}
+                            {ticket.status !== 'closed' && (
+                              <button 
+                                onClick={() => handleUpdateTicketStatus(ticket.id, 'closed')}
+                                className="flex-1 py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all"
+                              >
+                                Close Ticket
+                              </button>
+                            )}
+                            {ticket.status === 'closed' && (
+                              <button 
+                                onClick={() => handleUpdateTicketStatus(ticket.id, 'pending')}
+                                className="flex-1 py-3 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all"
+                              >
+                                Re-open
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {supportTickets.length === 0 && (
+                        <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-4 opacity-50">
+                          <MessageSquare className="w-12 h-12" />
+                          <p className="text-[10px] font-bold uppercase tracking-widest italic text-center">
+                            No support tickets found.<br/>User requests will appear here.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'workforce' ? (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Real-time Attendance</h2>
@@ -1863,7 +2366,7 @@ export const AdminDashboard: React.FC = () => {
                           <span className="text-slate-300">•</span>
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{record.User?.employeeId}</span>
-                            <CopyButton text={record.User?.employeeId} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <CopyButton value={record.User?.employeeId} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                         </div>
                         {record.checkOut !== '--:--' && (
@@ -1894,16 +2397,32 @@ export const AdminDashboard: React.FC = () => {
       ) : activeTab === 'approvals' ? (
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center px-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Leave Requests</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Leave Requests</h2>
+              <button 
+                onClick={() => setShowArchivedLeaves(!showArchivedLeaves)}
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border transition-all ${
+                  showArchivedLeaves 
+                    ? 'bg-indigo-600 border-indigo-600 text-white' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+                }`}
+              >
+                {showArchivedLeaves ? 'Hide Archived' : 'Show Archived'}
+              </button>
+            </div>
             <span className="px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-bold uppercase tracking-wider">
-              {pendingLeaves.length} Waiting
+              {pendingLeaves.length} Pending
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
-            {pendingLeaves.length > 0 ? (
-              pendingLeaves.map((req, i) => (
-                <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-100">
+            {leaveRequests.length > 0 ? (
+              leaveRequests
+                .filter(req => showArchivedLeaves || !req.archived)
+                .map((req, i) => (
+                <div key={i} className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border shadow-sm transition-all ${
+                  req.archived ? 'opacity-60 border-slate-200 dark:border-slate-800 grayscale' : 'border-slate-100 dark:border-slate-800 hover:border-indigo-100'
+                }`}>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden">
@@ -1914,15 +2433,26 @@ export const AdminDashboard: React.FC = () => {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{req.User?.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{req.User?.name}</p>
+                          {req.archived && <span className="text-[8px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded uppercase">Archived</span>}
+                        </div>
                         <p className="text-[10px] font-medium text-slate-400 truncate">
                           {req.User?.role === 'Admin' ? 'MGT' : (req.User?.Department?.name || req.User?.department)} • {req.User?.employeeId}
                         </p>
                       </div>
                     </div>
-                    <span className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-wider">
-                      {req.type}
-                    </span>
+                    <div className="flex items-center gap-2">
+                       <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
+                         req.status === 'Pending' ? 'bg-amber-50 text-amber-600' :
+                         req.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                       }`}>
+                         {req.status}
+                       </span>
+                       <span className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-wider">
+                         {req.type}
+                       </span>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-1 mb-4 p-3 bg-slate-50/50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
@@ -1953,20 +2483,36 @@ export const AdminDashboard: React.FC = () => {
                   </div>
 
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleLeaveAction(req.id, 'Approved')}
-                      disabled={updatingId === req.id}
-                      className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-emerald-100 dark:shadow-none"
-                    >
-                      {updatingId === req.id ? 'Updating...' : 'Approve'}
-                    </button>
-                    <button 
-                      onClick={() => handleLeaveAction(req.id, 'Rejected')}
-                      disabled={updatingId === req.id}
-                      className="flex-1 py-3 bg-white border border-slate-100 dark:border-slate-800 text-red-500 rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
+                    {req.status === 'Pending' ? (
+                      <>
+                        <button 
+                          onClick={() => handleLeaveAction(req.id, 'Approved')}
+                          disabled={updatingId === req.id}
+                          className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-emerald-100 dark:shadow-none"
+                        >
+                          {updatingId === req.id ? 'Updating...' : 'Approve'}
+                        </button>
+                        <button 
+                          onClick={() => handleLeaveAction(req.id, 'Rejected')}
+                          disabled={updatingId === req.id}
+                          className="flex-1 py-3 bg-white border border-slate-100 dark:border-slate-800 text-red-500 rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    ) : (
+                      <button 
+                        onClick={() => handleArchiveLeave(req.id, req.archived || false)}
+                        className={`flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                          req.archived 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-600' 
+                            : 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600'
+                        }`}
+                      >
+                        <Shield className="w-3 h-3" />
+                        {req.archived ? 'Unarchive' : 'Archive (Hide)'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))
@@ -2116,7 +2662,11 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex justify-between items-center px-2">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Branch Statistics</h2>
             <button 
-              onClick={() => setShowBranchModal(true)}
+              onClick={() => {
+                setEditingBranch(null);
+                setNewBranch({ name: '', location: '', code: '', latitude: null, longitude: null });
+                setShowBranchModal(true);
+              }}
               className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1"
             >
               <Building2 className="w-3.5 h-3.5" /> + New Branch
@@ -2135,12 +2685,12 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                         <div className="flex items-center gap-1.5">
                           <h3 className="text-xs font-bold text-slate-900 dark:text-white">{bStats.name}</h3>
-                          <CopyButton value={bStats.id} label="Branch ID" className="scale-75" />
+                          <CopyButton value={String(bStats.id)} label="Branch ID" className="scale-75" />
                         </div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: {bStats.id.slice(0, 8)}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: {String(bStats.id || '').slice(0, 8)}</p>
                     </div>
                     <div className="px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-lg text-[9px] font-bold">
-                      {bStats.averageAttendance}% Att.
+                      {bStats.efficiencyScore || bStats.averageAttendance}% Eff.
                     </div>
                   </div>
 
@@ -2182,17 +2732,25 @@ export const AdminDashboard: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <div className="text-right">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Staff</p>
                     <p className="text-sm font-black text-slate-900 dark:text-white">{branch.Users?.length || 0}</p>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteBranch(branch.id)}
-                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-1">
+                    <button 
+                      onClick={() => handleEditBranch(branch)}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteBranch(branch.id)}
+                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -2210,7 +2768,11 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex justify-between items-center px-2">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Department Performance</h2>
             <button 
-              onClick={() => setShowDeptModal(true)}
+              onClick={() => {
+                setEditingDept(null);
+                setNewDept({ name: '', description: '', code: '' });
+                setShowDeptModal(true);
+              }}
               className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1"
             >
               <Tag className="w-3.5 h-3.5" /> + New Department
@@ -2230,13 +2792,13 @@ export const AdminDashboard: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-1.5">
                           <h3 className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[150px]">{dStats.name}</h3>
-                          <CopyButton text={String(dStats.id)} label="Dept ID" className="scale-75" />
+                          <CopyButton value={String(dStats.id)} label="Dept ID" className="scale-75" />
                         </div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">DEPT-{dStats.id.toString().slice(0, 4)}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">DEPT-{String(dStats.id || '').slice(0, 4)}</p>
                       </div>
                     </div>
                     <div className="px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-lg text-[9px] font-bold">
-                      {dStats.averageAttendance}% Present
+                      {dStats.efficiencyScore || dStats.averageAttendance}% Eff.
                     </div>
                   </div>
 
@@ -2274,21 +2836,29 @@ export const AdminDashboard: React.FC = () => {
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px]">{dept.name}</h3>
                     <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1 truncate">
                        <span className="truncate">{dept.description || 'No description'}</span> • {dept.code || 'DEPT'}
-                       {dept.code && <CopyButton text={dept.code} label="Dept Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                       {dept.code && <CopyButton value={dept.code} label="Dept Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <div className="text-right">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Employees</p>
                     <p className="text-sm font-black text-slate-900 dark:text-white">{dept.Users?.length || 0}</p>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteDept(dept.id)}
-                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-1">
+                    <button 
+                      onClick={() => handleEditDept(dept)}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteDept(dept.id)}
+                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -2297,7 +2867,19 @@ export const AdminDashboard: React.FC = () => {
       ) : activeTab === 'announcements' ? (
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center px-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Published Announcements</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Published Announcements</h2>
+              <button 
+                onClick={() => setShowArchivedAnnouncements(!showArchivedAnnouncements)}
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border transition-all ${
+                  showArchivedAnnouncements 
+                    ? 'bg-indigo-600 border-indigo-600 text-white' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+                }`}
+              >
+                {showArchivedAnnouncements ? 'Hide Archived' : 'Show Archived'}
+              </button>
+            </div>
             <button 
               onClick={() => {
                 setEditingAnnouncement(null);
@@ -2311,11 +2893,17 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex flex-col gap-3">
-            {announcements.map((ann, i) => (
+            {announcements
+              .filter(ann => showArchivedAnnouncements || !ann.archived)
+              .map((ann, i) => (
               <div 
                 key={i} 
                 onClick={() => setSelectedAnnouncement(ann)}
-                className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm group cursor-pointer active:scale-[0.99] transition-transform"
+                className={`bg-white dark:bg-slate-900 p-5 rounded-3xl border shadow-sm group cursor-pointer active:scale-[0.99] transition-transform ${
+                  ann.archived 
+                    ? 'opacity-60 border-slate-200 dark:border-slate-800 grayscale' 
+                    : 'border-slate-100 dark:border-slate-800 hover:border-indigo-100'
+                }`}
               >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex flex-col gap-1">
@@ -2332,6 +2920,20 @@ export const AdminDashboard: React.FC = () => {
                     <h3 className="text-xs font-bold text-slate-900 dark:text-white mt-1">{ann.title}</h3>
                   </div>
                   <div className="flex gap-1 lg:opacity-0 lg:group-hover:opacity-100 transition-all">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleArchiveAnnouncement(ann.id, ann.archived);
+                      }}
+                      title={ann.archived ? "Unarchive" : "Archive"}
+                      className={`p-2 rounded-lg transition-all ${
+                        ann.archived 
+                          ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-500/10' 
+                          : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                    </button>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2470,16 +3072,35 @@ export const AdminDashboard: React.FC = () => {
                 <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Automations & AI</h4>
                 <div className="grid grid-cols-1 gap-3">
                   {[
-                    { label: 'Auto-Check-Out', desc: 'Automatically check out staff at end of work day', active: false },
-                    { label: 'Smart Scheduling', desc: 'AI-suggested shift rotations based on demand', active: false },
-                    { label: 'Alert Manager', desc: 'Notify managers when team absence exceeds 20%', active: true },
+                    { 
+                      label: 'Work-Hour Auto-Checkout', 
+                      desc: 'Automatically checkout staff who are still active at the end of work hours', 
+                      active: settings?.autoCheckoutEnabled,
+                      key: 'autoCheckoutEnabled'
+                    },
+                    { 
+                      label: 'Presence Smart-Alerts', 
+                      desc: 'Notify managers when team absence exceeds 20%', 
+                      active: true,
+                      key: 'alertsEnabled'
+                    },
                   ].map((item, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group">
+                    <div 
+                      key={i} 
+                      className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group"
+                    >
                       <div className="flex-1 pr-4">
                         <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.label}</p>
                         <p className="text-[9px] font-medium text-slate-400">{item.desc}</p>
                       </div>
-                      <div className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${item.active ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                      <div 
+                        onClick={() => {
+                          if (item.key === 'autoCheckoutEnabled') {
+                            setSettings({ ...settings, autoCheckoutEnabled: !settings.autoCheckoutEnabled });
+                          }
+                        }}
+                        className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${item.active ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                      >
                          <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${item.active ? 'left-6' : 'left-1'}`} />
                       </div>
                     </div>
@@ -2491,8 +3112,8 @@ export const AdminDashboard: React.FC = () => {
                 <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Security & Privacy</h4>
                 <div className="grid grid-cols-1 gap-3">
                   {[
-                    { key: 'biometricEnabled', label: 'Biometric Access', desc: 'Enable facial recognition for check-ins' },
                     { key: 'geofencingEnabled', label: 'Location Guard', desc: `Geofence check-ins within ${settings?.geofencingRadius || 500}m of branch` },
+                    { key: 'deviceBindingEnabled', label: 'Device Binding', desc: 'Restrict users to a single device (accounts cannot be shared)' },
                   ].map((item, i) => (
                     <div key={i} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group">
                       <div className="flex-1 pr-4">
@@ -2557,14 +3178,104 @@ export const AdminDashboard: React.FC = () => {
             </form>
           </div>
 
-          <div className="p-5 bg-slate-900 rounded-3xl text-white relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-4 opacity-10">
-                <ShieldCheck className="w-20 h-20" />
-             </div>
-             <h4 className="text-xs font-bold mb-2 uppercase tracking-widest text-indigo-400">Security Note</h4>
-             <p className="text-[11px] text-slate-300 leading-relaxed">
-               Changes to attendance policies only reflect on new check-in/out actions and do not affect historical records unless manually re-synced.
-             </p>
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm border-red-50 dark:border-red-900/20 mt-4">
+            <h3 className="text-sm font-bold text-red-600 dark:text-red-500 mb-6 flex items-center gap-2">
+              <Trash2 className="w-4 h-4" />
+              Data & Lifecycle Maintenance
+            </h3>
+            
+            <div className="space-y-6">
+              <div className="space-y-3 p-4 bg-red-50/30 dark:bg-red-950/10 rounded-2xl border border-red-100/50 dark:border-red-900/20">
+                <div className="flex items-center gap-2 text-red-600">
+                  <AlertCircle className="w-4 h-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest leading-none">Prune Old Records</p>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed italic">
+                  Keep your database clean and efficient by removing unnecessary legacy data. Select a date threshold and the types of data you wish to permanently delete.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Delete Records Older Than</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="date" 
+                      value={pruneSettings.olderThan}
+                      onChange={(e) => setPruneSettings({ ...pruneSettings, olderThan: e.target.value })}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-medium focus:ring-2 focus:ring-red-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collections to Prune</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { id: 'announcements', label: 'Announcements', desc: 'Published updates and news' },
+                      { id: 'leaves', label: 'Leave Requests', desc: 'Approved, rejected, and old requests' },
+                      { id: 'attendance', label: 'Attendance Logs', desc: 'Daily check-in/out records' }
+                    ].map(item => {
+                      const isSelected = pruneSettings.collections.includes(item.id);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            const newCols = isSelected 
+                              ? pruneSettings.collections.filter(c => c !== item.id)
+                              : [...pruneSettings.collections, item.id];
+                            setPruneSettings({ ...pruneSettings, collections: newCols });
+                          }}
+                          className={`flex items-center gap-3 p-4 rounded-2xl border transition-all text-left group ${
+                            isSelected 
+                              ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-400' 
+                              : 'bg-white border-slate-100 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all ${
+                            isSelected 
+                              ? 'bg-red-600 border-red-600 text-white' 
+                              : 'border-slate-300 dark:border-slate-600 group-hover:border-red-400'
+                          }`}>
+                            {isSelected && <Check className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-bold">{item.label}</p>
+                            <p className="text-[9px] opacity-70 italic font-medium">{item.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button 
+                    type="button"
+                    onClick={handlePruneData}
+                    disabled={pruningLoading || pruneSettings.collections.length === 0}
+                    className="w-full flex items-center justify-center gap-2 py-4 bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-xl shadow-red-500/20 active:scale-95 transition-all disabled:opacity-20"
+                  >
+                    {pruningLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Pruning Database...
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-4 h-4" />
+                        Execute Data Pruning
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[9px] text-slate-400 text-center mt-3 font-medium uppercase tracking-tighter">
+                    Security Warning: This operation is destructive and immediate.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2590,12 +3301,127 @@ export const AdminDashboard: React.FC = () => {
         )}
       </AnimatePresence>
       {/* Floating Action Button for printing (Optional) */}
+      {/* Support Contact Modal */}
+      <AnimatePresence>
+        {showSupportModal && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setShowSupportModal(false);
+                setEditingSupport(null);
+              }}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[150]"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl p-8 flex flex-col overflow-hidden"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-xl">
+                    <HelpCircle className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    {editingSupport ? 'Edit Contact' : 'New Support Channel'}
+                  </h2>
+                </div>
+                <button 
+                  onClick={() => {
+                    setShowSupportModal(false);
+                    setEditingSupport(null);
+                  }} 
+                  className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSupport} className="flex flex-col gap-4 overflow-y-auto no-scrollbar pb-10">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Channel Label</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. HR Support, Tech Helpdesk"
+                    value={newSupport.label}
+                    onChange={(e) => setNewSupport(prev => ({ ...prev, label: e.target.value }))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5 flex flex-col">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Type</label>
+                  <CustomDropdown
+                    options={[
+                      { value: 'email', label: 'Email', icon: <Mail className="w-3 h-3" /> },
+                      { value: 'phone', label: 'Phone', icon: <Shield className="w-3 h-3" /> },
+                      { value: 'whatsapp', label: 'WhatsApp', icon: <MessageSquare className="w-3 h-3" /> },
+                      { value: 'address', label: 'Office Address', icon: <MapPin className="w-3 h-3" /> }
+                    ]}
+                    value={newSupport.type}
+                    onChange={val => setNewSupport(prev => ({ ...prev, type: val }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Contact Details</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. support@doorlog.com or +234..."
+                    value={newSupport.value}
+                    onChange={(e) => setNewSupport(prev => ({ ...prev, value: e.target.value }))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Status</label>
+                  <div className="flex gap-2">
+                    {[
+                      { id: true, label: 'Active', color: 'bg-emerald-50 text-emerald-600', activeBg: 'bg-emerald-600 text-white' },
+                      { id: false, label: 'Hidden', color: 'bg-slate-50 text-slate-400', activeBg: 'bg-slate-600 text-white' }
+                    ].map(opt => (
+                      <button
+                        key={String(opt.id)}
+                        type="button"
+                        onClick={() => setNewSupport({...newSupport, isActive: opt.id})}
+                        className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
+                          newSupport.isActive === opt.id ? opt.activeBg : opt.color
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-4" />
+
+                <button 
+                  type="submit"
+                  disabled={supportLoading || !newSupport.label || !newSupport.value}
+                  className="flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-xs uppercase tracking-[0.25em] disabled:opacity-50"
+                >
+                  {supportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                  {editingSupport ? 'Save Changes' : 'Add Support Channel'}
+                </button>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {selectedRecord && (
           <AttendanceDetailModal 
             record={selectedRecord}
             isOpen={!!selectedRecord}
             onClose={() => setSelectedRecord(null)}
+            currentUser={user}
           />
         )}
       </AnimatePresence>

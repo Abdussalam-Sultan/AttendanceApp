@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, ShieldCheck, Calendar, Clock, X, Check, ArrowLeft, Filter, Trash2 } from 'lucide-react';
+import { Bell, ShieldCheck, Calendar, Clock, X, Check, ArrowLeft, Filter, Trash2, HelpCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 interface NotificationOverlayProps {
@@ -58,6 +58,7 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
       case 'ANNOUNCEMENT': return { icon: Bell, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-500/10", category: 'UPDATES' };
       case 'LEAVE_STATUS': return { icon: Calendar, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-500/10", category: 'ALERTS' };
       case 'ATTENDANCE_STATUS': return { icon: Clock, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10", category: 'ALERTS' };
+      case 'support_request': return { icon: HelpCircle, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-500/10", category: 'ALERTS' };
       default: return { icon: Bell, color: "text-slate-500", bg: "bg-slate-50 dark:bg-slate-500/10", category: 'UPDATES' };
     }
   };
@@ -102,15 +103,13 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200]"
           />
           <motion.div 
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[201] rounded-t-[40px] shadow-2xl dark:shadow-none flex flex-col overflow-hidden"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-slate-50 dark:bg-slate-950 z-[201] rounded-[40px] shadow-2xl dark:shadow-none flex flex-col overflow-hidden"
           >
-            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mt-4 mb-4"></div>
-            
-            <div className="px-8 pb-4 flex justify-between items-center bg-inherit">
+            <div className="px-8 pb-4 flex justify-between items-center bg-inherit shrink-0 mt-6">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Notifications</h2>
                 <p className="text-xs font-medium text-slate-400 mt-0.5">{unreadCount} unread messages</p>
@@ -134,7 +133,7 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
             </div>
 
             {/* Filter Chips */}
-            <div className="px-8 py-4 flex gap-3 overflow-x-auto no-scrollbar scroll-smooth">
+            <div className="px-8 py-4 flex gap-3 overflow-x-auto no-scrollbar scroll-smooth shrink-0">
               {['ALL', 'ALERTS', 'UPDATES', 'SYSTEM'].map((f) => (
                 <button
                   key={f}
@@ -213,7 +212,7 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
               )}
             </div>
 
-            <div className="px-8 pb-8 pt-4 bg-white dark:bg-slate-900 rounded-t-[40px] shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
+            <div className="px-8 pb-8 pt-4 bg-white dark:bg-slate-900 rounded-t-[40px] shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)] shrink-0">
                <button 
                   onClick={onClose}
                   className="w-full bg-slate-900 dark:bg-indigo-600 text-white font-bold py-5 rounded-[24px] active:scale-95 transition-all text-xs uppercase tracking-[0.25em] shadow-xl shadow-slate-200 dark:shadow-none"
@@ -236,7 +235,7 @@ export const NotificationOverlay: React.FC<NotificationOverlayProps> = ({ show, 
                 />
                 <motion.div 
                   layoutId={`notif-${selectedNotif.id}`}
-                  className="fixed inset-x-5 top-1/2 -translate-y-1/2 max-h-[70vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl dark:shadow-none p-8 flex flex-col"
+                  className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[70vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl dark:shadow-none p-8 flex flex-col"
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div className={`p-4 rounded-3xl ${getNotifConfig(selectedNotif.type).bg} ${getNotifConfig(selectedNotif.type).color} shadow-sm`}>

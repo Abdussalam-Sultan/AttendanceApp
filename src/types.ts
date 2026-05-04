@@ -81,6 +81,7 @@ export interface AttendanceStats {
 }
 
 export interface BranchStats {
+  branchName?: string;
   averageAttendance: number;
   totalEmployees: number;
   onLeaveToday: number;

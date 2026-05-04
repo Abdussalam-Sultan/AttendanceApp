@@ -61,14 +61,22 @@ router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {
       const users = branch.Users || [];
       const userIds = users.map(u => u.id);
 
-      let branchPresentCount = 0;
+      let branchTotalWeightedScore = 0;
       let branchTotalAttendance = 0;
+      let branchPresentCount = 0;
       let branchOnLeaveToday = 0;
       let branchTotalLeaveBalance = 0;
 
       userIds.forEach(uid => {
         const userAttendance = attendanceMap.get(uid) || [];
         branchTotalAttendance += userAttendance.length;
+        
+        userAttendance.forEach(a => {
+          if (a.status === 'Present' || a.status === 'present') branchTotalWeightedScore += 1;
+          else if (a.status === 'Late' || a.status === 'late') branchTotalWeightedScore += 0.8;
+          else if (a.status === 'Leave' || a.status === 'leave') branchTotalWeightedScore += 1;
+        });
+
         branchPresentCount += userAttendance.filter(a => a.status === 'Present' || a.status === 'Late').length;
 
         const userLeaves = leaveMap.get(uid) || [];
@@ -80,6 +88,7 @@ router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {
       });
 
       const averageAttendance = branchTotalAttendance > 0 ? (branchPresentCount / branchTotalAttendance) * 100 : 0;
+      const efficiencyScore = branchTotalAttendance > 0 ? (branchTotalWeightedScore / branchTotalAttendance) * 100 : 0;
       const averageLeaveBalance = users.length > 0 ? branchTotalLeaveBalance / users.length : 0;
 
       return {
@@ -87,6 +96,7 @@ router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {
         name: branch.name,
         totalEmployees: users.length,
         averageAttendance: Math.round(averageAttendance),
+        efficiencyScore: Math.round(efficiencyScore),
         onLeaveToday: branchOnLeaveToday,
         averageLeaveBalance: Math.round(averageLeaveBalance)
       };
@@ -162,10 +172,18 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
       let totalAttendance = 0;
       let onLeaveToday = 0;
       let totalLeaveBalance = 0;
+      let totalWeightedScore = 0;
 
       userIds.forEach(uid => {
         const userAttendance = attendanceMap.get(uid) || [];
         totalAttendance += userAttendance.length;
+        
+        userAttendance.forEach(a => {
+          if (a.status === 'Present' || a.status === 'present') totalWeightedScore += 1;
+          else if (a.status === 'Late' || a.status === 'late') totalWeightedScore += 0.8;
+          else if (a.status === 'Leave' || a.status === 'leave') totalWeightedScore += 1;
+        });
+
         const present = userAttendance.filter(a => a.status === 'Present' || a.status === 'Late');
         presentCount += present.length;
         lateCount += userAttendance.filter(a => a.status === 'Late').length;
@@ -179,6 +197,7 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
       });
 
       const averageAttendance = totalAttendance > 0 ? (presentCount / totalAttendance) * 100 : 0;
+      const efficiencyScore = totalAttendance > 0 ? (totalWeightedScore / totalAttendance) * 100 : 0;
       const averageLeaveBalance = users.length > 0 ? totalLeaveBalance / users.length : 0;
 
       return {
@@ -186,6 +205,7 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
         name: dept.name,
         totalEmployees: users.length,
         averageAttendance: Math.round(averageAttendance),
+        efficiencyScore: Math.round(efficiencyScore),
         lateCount: lateCount,
         onLeaveToday: onLeaveToday,
         averageLeaveBalance: Math.round(averageLeaveBalance)
@@ -233,6 +253,18 @@ router.delete('/branches/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+// Update a branch
+router.patch('/branches/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const branch = await Branch.findByPk(req.params.id);
+    if (!branch) return res.status(404).send({ error: 'Branch not found' });
+    await branch.update(req.body);
+    res.send(branch);
+  } catch (error) {
+    res.status(400).send(error);
+  }
+});
+
 // Get all departments
 router.get('/departments', authenticate, async (req, res) => {
   try {
@@ -264,6 +296,18 @@ router.delete('/departments/:id', authenticate, isAdmin, async (req, res) => {
     res.send({ message: 'Department deleted' });
   } catch (error) {
     res.status(500).send(error);
+  }
+});
+
+// Update a department
+router.patch('/departments/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const department = await Department.findByPk(req.params.id);
+    if (!department) return res.status(404).send({ error: 'Department not found' });
+    await department.update(req.body);
+    res.send(department);
+  } catch (error) {
+    res.status(400).send(error);
   }
 });
 
@@ -473,6 +517,40 @@ router.post('/users/bulk-update', authenticate, isManager, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ error: 'Bulk update failed' });
+  }
+});
+
+// Prune old data
+router.post('/prune', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { olderThan, collections } = req.body;
+    const dateLimit = new Date(olderThan);
+    
+    if (isNaN(dateLimit.getTime())) {
+      return res.status(400).send({ error: 'Invalid date format' });
+    }
+
+    const results = {};
+    
+    if (collections.includes('announcements')) {
+      results.announcements = await Announcement.destroy({
+        where: { createdAt: { [Op.lt]: dateLimit } }
+      });
+    }
+    if (collections.includes('leaves')) {
+      results.leaves = await LeaveRequest.destroy({
+        where: { createdAt: { [Op.lt]: dateLimit } }
+      });
+    }
+    if (collections.includes('attendance')) {
+      results.attendance = await Attendance.destroy({
+        where: { createdAt: { [Op.lt]: dateLimit } }
+      });
+    }
+
+    res.send({ message: 'Pruning completed', results });
+  } catch (error) {
+    res.status(500).send(error);
   }
 });
 

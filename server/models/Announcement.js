@@ -24,6 +24,10 @@ const Announcement = sequelize.define('Announcement', {
   },
   timestamp: {
     type: DataTypes.STRING, // "2h ago"
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
   }
 });
 

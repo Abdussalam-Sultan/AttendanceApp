@@ -35,9 +35,25 @@ const SystemSettings = sequelize.define('SystemSettings', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  autoCheckoutEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
   workingDays: {
     type: DataTypes.STRING,
     defaultValue: "Monday,Tuesday,Wednesday,Thursday,Friday",
+  },
+  deviceBindingEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  alertsEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  aiAnomalyEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
   }
 });
 

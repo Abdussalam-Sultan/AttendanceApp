@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, Phone, Mail, HelpCircle, X, Send, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { MessageSquare, Phone, Mail, HelpCircle, X, Send, ArrowRight, Loader2, CheckCircle2, MapPin } from 'lucide-react';
 import { useToast } from './ToastProvider';
+import { api } from '../services/api';
 
 interface SupportOverlayProps {
   show: boolean;
@@ -11,6 +12,7 @@ interface SupportOverlayProps {
 export const SupportOverlay: React.FC<SupportOverlayProps> = ({ show, onClose }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     subject: '',
@@ -18,14 +20,27 @@ export const SupportOverlay: React.FC<SupportOverlayProps> = ({ show, onClose })
     category: 'General'
   });
 
+  useEffect(() => {
+    if (show) {
+      api.getSupportContacts().then(setContacts).catch(console.error);
+    }
+  }, [show]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.subject.trim() || !formData.message.trim()) return;
+    
     setLoading(true);
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 1500));
-    setLoading(false);
-    setSubmitted(true);
-    toast("Support request submitted successfully", "success");
+    try {
+      await api.submitSupportRequest(formData);
+      setSubmitted(true);
+      toast("Support request submitted successfully", "success");
+    } catch (error) {
+      console.error('Support submission error:', error);
+      toast("Failed to submit support request", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const categories = ['General', 'Technical Issue', 'Attendance Correction', 'Billing/Account', 'Feedback'];
@@ -42,14 +57,12 @@ export const SupportOverlay: React.FC<SupportOverlayProps> = ({ show, onClose })
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200]"
           />
           <motion.div 
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-x-0 bottom-0 max-h-[90vh] bg-slate-50 dark:bg-slate-950 z-[201] rounded-t-[40px] shadow-2xl flex flex-col overflow-hidden"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-slate-50 dark:bg-slate-950 z-[201] rounded-[40px] shadow-2xl flex flex-col overflow-hidden"
           >
-            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mt-4 mb-2"></div>
-            
             <div className="px-8 py-6 flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Help Center</h2>
@@ -66,20 +79,57 @@ export const SupportOverlay: React.FC<SupportOverlayProps> = ({ show, onClose })
             <div className="flex-1 overflow-y-auto px-8 pb-32 no-scrollbar">
               {!submitted ? (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  {/* Quick Contact */}
+                  {/* Dynamic Contact Channels */}
                   <div className="grid grid-cols-2 gap-4">
-                    <button className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-3 text-center transition-all active:scale-95 group">
-                      <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 group-hover:scale-110 transition-transform">
-                        <Phone className="w-6 h-6" />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-white">Call Support</span>
-                    </button>
-                    <button className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-3 text-center transition-all active:scale-95 group">
-                      <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 group-hover:scale-110 transition-transform">
-                        <MessageSquare className="w-6 h-6" />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-white">Live Chat</span>
-                    </button>
+                    {contacts.length > 0 ? contacts.map((contact, i) => {
+                      const Icon = contact.type === 'phone' ? Phone : 
+                                  contact.type === 'email' ? Mail : 
+                                  contact.type === 'whatsapp' ? MessageSquare : MapPin;
+                      
+                      const href = contact.type === 'email' ? `mailto:${contact.value}` :
+                                  contact.type === 'phone' ? `tel:${contact.value}` :
+                                  contact.type === 'whatsapp' ? `https://wa.me/${contact.value.replace(/\D/g, '')}` : 
+                                  `#`;
+
+                      return (
+                        <motion.a 
+                          key={contact.id}
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: i * 0.1 }}
+                          className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-3 text-center transition-all active:scale-95 group shadow-sm hover:border-indigo-200"
+                        >
+                          <div className={`p-3 rounded-2xl ${
+                            contact.type === 'email' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600' :
+                            contact.type === 'whatsapp' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600' :
+                            'bg-amber-50 dark:bg-amber-500/10 text-amber-600'
+                          } group-hover:scale-110 transition-transform`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-white truncate w-full px-1">
+                            {contact.label}
+                          </span>
+                        </motion.a>
+                      );
+                    }) : (
+                      <>
+                        <button className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-3 text-center transition-all active:scale-95 group">
+                          <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 group-hover:scale-110 transition-transform">
+                            <Phone className="w-6 h-6" />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-white">Call Support</span>
+                        </button>
+                        <button className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-3 text-center transition-all active:scale-95 group">
+                          <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 group-hover:scale-110 transition-transform">
+                            <MessageSquare className="w-6 h-6" />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-white">Live Chat</span>
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   {/* FAQ Search */}
@@ -176,10 +226,10 @@ export const SupportOverlay: React.FC<SupportOverlayProps> = ({ show, onClose })
               )}
             </div>
 
-            <div className="absolute bottom-0 inset-x-0 p-8 bg-gradient-to-t from-slate-50 dark:from-slate-950 via-slate-50 dark:via-slate-950/90 to-transparent pt-12 flex flex-col gap-4">
+            <div className="absolute bottom-0 inset-x-0 p-8 bg-gradient-to-t from-slate-50 dark:from-slate-950 via-slate-50 dark:via-slate-950/90 to-transparent pt-12 flex flex-col gap-4 pointer-events-none">
                <div className="flex items-center gap-2 justify-center text-[10px] font-bold text-slate-400 mb-2">
                  <Mail className="w-3 h-3" />
-                 <span>support@doorlog.com</span>
+                 <span>{contacts.find(c => c.type === 'email')?.value || 'support@doorlog.com'}</span>
                </div>
             </div>
           </motion.div>

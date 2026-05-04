@@ -23,6 +23,9 @@ interface ProfileViewProps {
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTheme, showNotifications, setShowNotifications, unreadCount, user: propUser, onUserUpdate }) => {
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
   const { toast, confirm } = useToast();
   const [user, setUser] = useState<User | null>(propUser);
   const [loading, setLoading] = useState(true);
@@ -81,7 +84,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const efficiency = stats ? Math.round(((stats.present || 0) + (stats.late || 0)) / Math.max(1, ((stats.present || 0) + (stats.late || 0) + (stats.absent || 0) + (stats.leave || 0))) * 100) : 0;
+  const efficiency = stats ? Math.round(((stats.present || 0) * 1 + (stats.late || 0) * 0.8 + (stats.leave || 0) * 1) / Math.max(1, ((stats.present || 0) + (stats.late || 0) + (stats.absent || 0) + (stats.leave || 0))) * 100) : 0;
   const pieData = stats ? [
     { name: 'Present', value: stats.present || 0, color: '#10b981' },
     { name: 'Late', value: stats.late || 0, color: '#f59e0b' },
@@ -1082,8 +1085,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
                       <LogOut className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">Auto-Checkout</h4>
-                      <p className="text-[10px] font-medium text-slate-400">Auto checkout when leaving area</p>
+                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">Geofence Auto-Checkout</h4>
+                      <p className="text-[10px] font-medium text-slate-400">Checkout automatically when leaving branch area</p>
                     </div>
                   </div>
                   <div className={`transition-colors duration-300 ${appPrefs.autoCheckout ? 'text-indigo-600' : 'text-slate-200'}`}>
@@ -1120,76 +1123,81 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/90 z-[100] flex flex-col"
+            className="fixed inset-0 bg-slate-950/98 z-[101] flex flex-col items-center justify-start sm:justify-center p-4 overflow-y-auto no-scrollbar"
           >
-            <div className="p-6 flex items-center justify-between text-white safe-top">
-              <button 
-                onClick={() => setImageToCrop(null)}
-                className="p-2 hover:bg-white/10 rounded-xl transition-colors"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <h2 className="text-sm font-bold uppercase tracking-widest text-white/60">Adjust Avatar</h2>
-              <div className="w-10"></div>
-            </div>
-
-            <div className="relative flex-1 bg-black">
-              <Cropper
-                image={imageToCrop}
-                crop={crop}
-                zoom={zoom}
-                aspect={1}
-                cropShape="round"
-                onCropChange={setCrop}
-                onCropComplete={onCropComplete}
-                onZoomChange={setZoom}
-              />
-            </div>
-
-            <div className="p-8 pb-12 bg-slate-900 rounded-t-[40px] flex flex-col gap-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Zoom</span>
-                  <span className="text-[10px] font-bold text-indigo-400">{Math.round(zoom * 100)}%</span>
+            <motion.div 
+              initial={{ scale: 0.9, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 20, opacity: 0 }}
+              className="w-full max-w-lg bg-slate-900 rounded-[40px] overflow-hidden shadow-2xl flex flex-col border border-white/5 mx-auto mt-8 sm:my-auto shrink-0 relative"
+            >
+              <div className="p-4 flex items-center justify-between text-white border-b border-white/5 bg-slate-900/50 shrink-0">
+                <button 
+                  onClick={() => setImageToCrop(null)}
+                  className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-colors active:scale-90"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="text-center">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Crop Profile Photo</h2>
                 </div>
-                <input
-                  type="range"
-                  value={zoom}
-                  min={1}
-                  max={3}
-                  step={0.1}
-                  aria-labelledby="Zoom"
-                  onChange={(e) => setZoom(Number(e.target.value))}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600 range-sm"
+                <div className="w-10"></div>
+              </div>
+
+              <div className="relative h-[250px] sm:h-[300px] bg-slate-950">
+                <Cropper
+                  image={imageToCrop}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  cropShape="round"
+                  showGrid={false}
+                  onCropChange={setCrop}
+                  onCropComplete={onCropComplete}
+                  onZoomChange={setZoom}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => setImageToCrop(null)}
-                  className="py-4 px-6 rounded-2xl border border-slate-700 text-slate-300 font-bold text-sm hover:bg-slate-800 active:scale-95 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveCroppedImage}
-                  disabled={isUploading}
-                  className="py-4 px-6 rounded-2xl bg-indigo-600 text-white font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 overflow-hidden"
-                >
-                  {isUploading ? (
-                    <>
+              <div className="p-5 bg-slate-900 shrink-0 space-y-5">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Digital Zoom</span>
+                    <span className="text-[10px] font-black text-indigo-400">{Math.round(zoom * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    value={zoom}
+                    min={1}
+                    max={3}
+                    step={0.01}
+                    aria-labelledby="Zoom"
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600 range-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setImageToCrop(null)}
+                    className="py-3.5 rounded-2xl border border-slate-700 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveCroppedImage}
+                    disabled={isUploading}
+                    className="py-3.5 rounded-2xl bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    {isUploading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <>
+                    ) : (
                       <Check className="w-4 h-4" />
-                      <span>Apply Changes</span>
-                    </>
-                  )}
-                </button>
+                    )}
+                    <span>Apply</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -36,6 +36,10 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
   },
   attachment: {
     type: DataTypes.STRING,
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
   }
 });
 
