@@ -24,8 +24,12 @@ interface ProfileViewProps {
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTheme, showNotifications, setShowNotifications, unreadCount, user: propUser, onUserUpdate }) => {
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }, []);
+
   const { toast, confirm } = useToast();
   const [user, setUser] = useState<User | null>(propUser);
   const [loading, setLoading] = useState(true);
@@ -83,6 +87,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ensure overlays start at the top when shown
+  useEffect(() => {
+    if (showPersonalInfo || showWorkInfo || showAttendanceSummary || showSecuritySettings || showAppSettings) {
+      const mainContent = document.getElementById('main-content');
+      if (mainContent) {
+        mainContent.scrollTo({ top: 0, behavior: 'instant' });
+      }
+    }
+  }, [showPersonalInfo, showWorkInfo, showAttendanceSummary, showSecuritySettings, showAppSettings]);
 
   const efficiency = stats ? Math.round(((stats.present || 0) * 1 + (stats.late || 0) * 0.8 + (stats.leave || 0) * 1) / Math.max(1, ((stats.present || 0) + (stats.late || 0) + (stats.absent || 0) + (stats.leave || 0))) * 100) : 0;
   const pieData = stats ? [

@@ -8,8 +8,7 @@ const STORAGE_KEYS = {
   SYNC_QUEUE: 'doorlog_sync_queue',
   ONBOARDING_COMPLETE: 'doorlog_onboarding_complete',
   AUTH_TOKEN: 'doorlog_auth_token',
-  THEME: 'doorlog_theme',
-  PREFERENCES: 'doorlog_preferences'
+  THEME: 'doorlog_theme'
 };
 
 export const storage = {
@@ -40,6 +39,15 @@ export const storage = {
     const queue = this.getQueue();
     const newQueue = queue.filter((item: any) => item.id !== id);
     this.save(STORAGE_KEYS.SYNC_QUEUE, newQueue);
+  },
+
+  clearUserSession() {
+    const keysToKeep = [STORAGE_KEYS.ONBOARDING_COMPLETE, STORAGE_KEYS.THEME];
+    Object.values(STORAGE_KEYS).forEach(key => {
+      if (!keysToKeep.includes(key)) {
+        localStorage.removeItem(key);
+      }
+    });
   },
 
   KEYS: STORAGE_KEYS

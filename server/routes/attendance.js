@@ -14,16 +14,53 @@ const router = express.Router();
 // Helper to parse time string "HH:MM" to minutes from midnight
 const timeToMinutes = (timeStr) => {
   if (!timeStr) return 0;
-  const [hours, minutes] = timeStr.split(':').map(Number);
+  // Handle AM/PM if present
+  if (timeStr.includes('AM') || timeStr.includes('PM')) {
+    return ampmToMinutes(timeStr);
+  }
+  const parts = timeStr.split(/[:\.]/).map(Number);
+  const hours = parts[0] || 0;
+  const minutes = parts[1] || 0;
   return hours * 60 + minutes;
 };
 
 // Robust date formatter to ensure client/server match
-const formatDate = (date) => {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getMonth()];
-  const year = date.getFullYear();
-  return `${day} ${month} ${year}`;
+const formatDate = (date, timezone = 'UTC') => {
+  try {
+    const tz = (timezone && timezone !== 'undefined') ? timezone : 'UTC';
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      timeZone: tz
+    }).format(date);
+  } catch (e) {
+    console.error('Date format error:', e);
+    // Fallback if timezone is invalid
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  }
+};
+
+const formatTime = (date, timezone = 'UTC', hour12 = true) => {
+  try {
+    const tz = (timezone && timezone !== 'undefined') ? timezone : 'UTC';
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: hour12,
+      timeZone: tz
+    }).format(date);
+  } catch (e) {
+    console.error('Time format error:', e);
+    return date.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: hour12
+    });
+  }
 };
 
 // Helper for 12h format to 24h conversion and then to minutes
@@ -48,7 +85,7 @@ router.get('/settings', authenticate, async (req, res) => {
   }
 });
 
-router.patch('/settings', authenticate, isAdmin, async (req, res) => {
+router.patch('/settings', authenticate, isManager, async (req, res) => {
   try {
     let settings = await SystemSettings.findOne();
     if (!settings) {
@@ -92,7 +129,7 @@ router.get('/admin/all-stats', authenticate, isManager, async (req, res) => {
           attributes: [],
           where: req.user.role === 'Manager' ? { branchId: req.user.branchId } : {} 
         }],
-        group: ['Attendance.status'],
+        group: ['status'],
         raw: true
       }),
       User.count({ where: userWhereClause })
@@ -172,7 +209,7 @@ router.get('/branch-stats', authenticate, async (req, res) => {
           attributes: [],
           where: { branchId: user.branchId } 
         }],
-        group: ['Attendance.status'],
+        group: ['status'],
         raw: true
       }),
       User.count({ where: { branchId: user.branchId } })
@@ -223,7 +260,7 @@ router.get('/stats', authenticate, async (req, res) => {
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
       where: { userId: req.user.id },
-      group: ['Attendance.status'],
+      group: ['status'],
       raw: true
     });
 
@@ -295,9 +332,10 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 
 router.post('/check-in', authenticate, async (req, res) => {
   try {
-    const { latitude, longitude } = req.body;
+    const { latitude, longitude, timezone } = req.body;
     const now = new Date();
-    const today = formatDate(now);
+    const tz = timezone || 'UTC';
+    const today = formatDate(now, tz);
 
     let settings = await SystemSettings.findOne();
     if (!settings) settings = await SystemSettings.create({});
@@ -344,8 +382,8 @@ router.post('/check-in', authenticate, async (req, res) => {
       });
     }
 
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    const time24Str = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const timeStr = formatTime(now, tz, true);
+    const time24Str = formatTime(now, tz, false);
     
     const arrivalMinutes = timeToMinutes(time24Str);
     const startMinutes = timeToMinutes(settings.workStartTime);
@@ -361,7 +399,7 @@ router.post('/check-in', authenticate, async (req, res) => {
     const record = await Attendance.create({
       userId: req.user.id,
       date: today,
-      day: now.toLocaleDateString([], { weekday: 'long' }),
+      day: now.toLocaleDateString('en-GB', { weekday: 'long', timeZone: tz }),
       status: status,
       checkIn: timeStr,
       checkOut: '--:--',
@@ -390,10 +428,12 @@ router.post('/check-in', authenticate, async (req, res) => {
 
 router.post('/check-out', authenticate, async (req, res) => {
   try {
+    const { timezone } = req.body;
+    const tz = timezone || 'UTC';
     const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    const time24Str = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    const today = formatDate(now);
+    const timeStr = formatTime(now, tz, true);
+    const time24Str = formatTime(now, tz, false);
+    const today = formatDate(now, tz);
 
     const attendance = await Attendance.findOne({
       where: { userId: req.user.id, checkOut: '--:--' },

@@ -70,7 +70,10 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
   const [activeTab, setActiveTab] = useState<'workforce' | 'approvals' | 'announcements' | 'employees' | 'branches' | 'departments' | 'settings' | 'support'>('workforce');
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -119,7 +122,21 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
   const [userUpdateLoading, setUserUpdateLoading] = useState(false);
 
   // Settings states
-  const [settings, setSettings] = useState<any>(null);
+  const [settings, setSettings] = useState<any>({
+    workStartTime: "09:00",
+    workEndTime: "17:00",
+    graceMinutes: 15,
+    overtimeStartMinutes: 30,
+    geofencingEnabled: false,
+    geofencingRadius: 500,
+    deviceBindingEnabled: false,
+    autoCheckoutEnabled: false,
+    alertsEnabled: true,
+    aiAnomalyEnabled: false,
+    biometricEnabled: false,
+    workingDays: "Monday,Tuesday,Wednesday,Thursday,Friday"
+  });
+  const [isSettingsDirty, setIsSettingsDirty] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
   
   // Announcement states
@@ -201,7 +218,12 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
       api.getAdminStats().then(setStats).catch(console.error);
       api.getAllAttendanceRecords().then(setRecords).catch(console.error);
       api.getAdminLeaveRequests(showArchivedLeaves).then(setLeaveRequests).catch(console.error);
-      api.getAttendanceSettings().then(setSettings).catch(console.error);
+      api.getAttendanceSettings().then(data => {
+        // Only update settings if we are not editing them or it's the first load
+        if (!isSettingsDirty || activeTab !== 'settings') {
+          setSettings(data);
+        }
+      }).catch(console.error);
       api.getAnnouncements(showArchivedAnnouncements).then(setAnnouncements).catch(console.error);
       api.getAdminUsers().then(setUsers).catch(console.error);
       api.getAdminBranchStats(dateRange.start, dateRange.end).then(setBranchStats).catch(console.error);
@@ -502,9 +524,12 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
     setSettingsLoading(true);
     try {
       await api.updateAttendanceSettings(settings);
+      setIsSettingsDirty(false);
       toast("Settings updated successfully!", "success");
+      haptics.success();
     } catch (error) {
       toast("Failed to update settings", "error");
+      haptics.error();
     } finally {
       setSettingsLoading(false);
     }
@@ -2969,14 +2994,20 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-              <Settings className="w-4 h-4 text-indigo-500" />
-              Attendance Policies
-            </h3>
-            
-            <form onSubmit={handleSaveSettings} className="space-y-6">
+        <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <form onSubmit={handleSaveSettings} className="space-y-8 pb-32">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-widest">Global Policies</h3>
+                <p className="text-[11px] font-medium text-slate-400">Configure core attendance rules and automated behaviors</p>
+              </div>
+              <div className={`px-4 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
+                settingsLoading ? 'bg-indigo-50 border-indigo-100 text-indigo-600 animate-pulse' : 'bg-slate-50 border-slate-100 text-slate-400'
+              }`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${settingsLoading ? 'bg-indigo-600' : 'bg-slate-300'}`} />
+                {settingsLoading ? 'Syncing...' : 'Ready'}
+              </div>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 focus-within:text-indigo-600 transition-colors">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Working Start Time</label>
@@ -2985,7 +3016,10 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                     <input 
                       type="time" 
                       value={settings?.workStartTime || ''}
-                      onChange={(e) => setSettings({ ...settings, workStartTime: e.target.value })}
+                      onChange={(e) => {
+                        setSettings({ ...settings, workStartTime: e.target.value });
+                        setIsSettingsDirty(true);
+                      }}
                       className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
                     />
                   </div>
@@ -2997,7 +3031,10 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                     <input 
                       type="time" 
                       value={settings?.workEndTime || ''}
-                      onChange={(e) => setSettings({ ...settings, workEndTime: e.target.value })}
+                      onChange={(e) => {
+                        setSettings({ ...settings, workEndTime: e.target.value });
+                        setIsSettingsDirty(true);
+                      }}
                       className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
                     />
                   </div>
@@ -3010,7 +3047,10 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   <input 
                     type="number" 
                     value={settings?.graceMinutes || 0}
-                    onChange={(e) => setSettings({ ...settings, graceMinutes: parseInt(e.target.value) })}
+                    onChange={(e) => {
+                      setSettings({ ...settings, graceMinutes: parseInt(e.target.value) });
+                      setIsSettingsDirty(true);
+                    }}
                     className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Minutes</span>
@@ -3024,7 +3064,10 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   <input 
                     type="number" 
                     value={settings?.overtimeStartMinutes || 0}
-                    onChange={(e) => setSettings({ ...settings, overtimeStartMinutes: parseInt(e.target.value) })}
+                    onChange={(e) => {
+                      setSettings({ ...settings, overtimeStartMinutes: parseInt(e.target.value) });
+                      setIsSettingsDirty(true);
+                    }}
                     className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Minutes</span>
@@ -3050,6 +3093,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                             newDays = [...currentDays, day];
                           }
                           setSettings({ ...settings, workingDays: newDays.join(',') });
+                          setIsSettingsDirty(true);
                         }}
                         className={`flex items-center gap-2 p-3 rounded-2xl border transition-all text-left ${
                           isSelected 
@@ -3081,27 +3125,39 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                     { 
                       label: 'Presence Smart-Alerts', 
                       desc: 'Notify managers when team absence exceeds 20%', 
-                      active: true,
+                      active: settings?.alertsEnabled,
                       key: 'alertsEnabled'
                     },
+                    {
+                      label: 'AI Anomaly Detection',
+                      desc: 'Use machine learning to flag suspicious attendance patterns or spoofing',
+                      active: settings?.aiAnomalyEnabled,
+                      key: 'aiAnomalyEnabled'
+                    },
+                    {
+                      label: 'Biometric Enforcement',
+                      desc: 'Require fingerprint or face ID for mobile app check-ins',
+                      active: settings?.biometricEnabled,
+                      key: 'biometricEnabled'
+                    }
                   ].map((item, i) => (
                     <div 
                       key={i} 
-                      className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group"
+                      onClick={() => {
+                        setSettings({ ...settings, [item.key]: !settings?.[item.key] });
+                        setIsSettingsDirty(true);
+                        haptics.selection();
+                      }}
+                      className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group cursor-pointer active:scale-[0.99] transition-transform"
                     >
                       <div className="flex-1 pr-4">
                         <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.label}</p>
                         <p className="text-[9px] font-medium text-slate-400">{item.desc}</p>
                       </div>
                       <div 
-                        onClick={() => {
-                          if (item.key === 'autoCheckoutEnabled') {
-                            setSettings({ ...settings, autoCheckoutEnabled: !settings.autoCheckoutEnabled });
-                          }
-                        }}
-                        className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${item.active ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${settings?.[item.key] ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
                       >
-                         <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${item.active ? 'left-6' : 'left-1'}`} />
+                         <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${settings?.[item.key] ? 'left-6' : 'left-1'}`} />
                       </div>
                     </div>
                   ))}
@@ -3111,23 +3167,38 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
               <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-4">
                 <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Security & Privacy</h4>
                 <div className="grid grid-cols-1 gap-3">
-                  {[
+                  { [
                     { key: 'geofencingEnabled', label: 'Location Guard', desc: `Geofence check-ins within ${settings?.geofencingRadius || 500}m of branch` },
                     { key: 'deviceBindingEnabled', label: 'Device Binding', desc: 'Restrict users to a single device (accounts cannot be shared)' },
                   ].map((item, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group">
+                    <div 
+                      key={i} 
+                      onClick={() => {
+                        setSettings({ ...settings, [item.key]: !settings?.[item.key] });
+                        setIsSettingsDirty(true);
+                        haptics.selection();
+                      }}
+                      className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 group cursor-pointer active:scale-[0.99] transition-transform"
+                    >
                       <div className="flex-1 pr-4">
                         <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.label}</p>
                         <p className="text-[9px] font-medium text-slate-400">{item.desc}</p>
                       </div>
                       <div 
-                        onClick={() => setSettings({ ...settings, [item.key]: !settings[item.key] })}
-                        className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${settings?.[item.key] ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${settings?.[item.key] ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
                       >
                          <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${settings?.[item.key] ? 'left-6' : 'left-1'}`} />
                       </div>
                     </div>
                   ))}
+                  {settings?.geofencingEnabled && branches.length > 0 && branches.some(b => !b.latitude) && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-2xl flex gap-3 items-start">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <p className="text-[9px] font-medium text-amber-700 dark:text-amber-400 italic">
+                        Warning: Some branches do not have coordinates set. Geofencing will be skipped for those branches.
+                      </p>
+                    </div>
+                  )}
                   {settings?.geofencingEnabled && (
                     <div className="p-4 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100 dark:border-indigo-500/20">
                       <label className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Geofence Radius (meters)</label>
@@ -3138,7 +3209,10 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                           max="2000" 
                           step="10"
                           value={settings?.geofencingRadius || 500}
-                          onChange={(e) => setSettings({ ...settings, geofencingRadius: parseInt(e.target.value) })}
+                          onChange={(e) => {
+                            setSettings({ ...settings, geofencingRadius: parseInt(e.target.value) });
+                            setIsSettingsDirty(true);
+                          }}
                           className="flex-1 h-1.5 bg-indigo-100 dark:bg-indigo-500/20 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                         />
                         <span className="text-[10px] font-black text-indigo-600 min-w-[40px]">{settings?.geofencingRadius || 500}m</span>
@@ -3176,9 +3250,8 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                 {settingsLoading ? 'Saving...' : 'Update Policies'}
               </button>
             </form>
-          </div>
 
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm border-red-50 dark:border-red-900/20 mt-4">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm border-red-50 dark:border-red-900/20 mt-4">
             <h3 className="text-sm font-bold text-red-600 dark:text-red-500 mb-6 flex items-center gap-2">
               <Trash2 className="w-4 h-4" />
               Data & Lifecycle Maintenance

@@ -86,7 +86,12 @@ export const api = {
     const res = await fetch('/api/attendance/check-in', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ latitude, longitude })
+      body: JSON.stringify({ 
+        latitude, 
+        longitude,
+        clientTime: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      })
     });
     
     if (!res.ok) {
@@ -107,7 +112,11 @@ export const api = {
     }
     const res = await fetch('/api/attendance/check-out', {
       method: 'POST',
-      headers: getHeaders()
+      headers: getHeaders(),
+      body: JSON.stringify({
+        clientTime: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      })
     });
 
     if (!res.ok) {

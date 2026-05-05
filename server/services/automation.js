@@ -5,8 +5,24 @@ import User from '../models/User.js';
 import { Op } from 'sequelize';
 
 const timeToMinutes = (timeStr) => {
-  if (!timeStr) return 0;
-  const [hours, minutes] = timeStr.split(':').map(Number);
+  if (!timeStr || timeStr === '--:--') return 0;
+  
+  // Handle AM/PM format
+  if (timeStr.includes('AM') || timeStr.includes('PM')) {
+    const [time, modifier] = timeStr.split(' ');
+    if (!time) return 0;
+    let [hours, minutes] = time.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return 0;
+    if (hours === 12) hours = 0;
+    if (modifier === 'PM') hours += 12;
+    return hours * 60 + minutes;
+  }
+
+  // Handle HH:MM format
+  const parts = timeStr.split(/[:\.]/).map(Number);
+  const hours = parts[0] || 0;
+  const minutes = parts[1] || 0;
+  if (isNaN(hours) || isNaN(minutes)) return 0;
   return hours * 60 + minutes;
 };
 
@@ -97,30 +113,30 @@ export const runAutoCheckout = async () => {
     const todayStr = formatDate(now);
 
     // Find sessions that are still open for today
+    // Ignore records where checkIn is still --:-- (e.g. absent records)
     const openSessions = await Attendance.findAll({
       where: {
         date: todayStr,
-        checkOut: '--:--'
+        checkOut: '--:--',
+        checkIn: { [Op.ne]: '--:--' }
       }
     });
 
     if (openSessions.length > 0) {
       console.log(`[Auto-Checkout] Found ${openSessions.length} open sessions. Processing...`);
       
-      const checkOutTime12h = new Date(now.getFullYear(), now.getMonth(), now.getDate(), ...settings.workEndTime.split(':').map(Number))
-        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      const [endH, endM] = settings.workEndTime.split(':').map(Number);
+      const checkOutTime12h = new Date(now.getFullYear(), now.getMonth(), now.getDate(), endH || 17, endM || 0)
+        .toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
 
       for (const session of openSessions) {
         session.checkOut = checkOutTime12h;
         session.checkOutStatus = 'Auto Checkout';
-        // Calculate worked minutes based on check-in
-        const [time, modifier] = session.checkIn.split(' ');
-        let [inHours, inMinutes] = time.split(':').map(Number);
-        if (inHours === 12) inHours = 0;
-        if (modifier === 'PM') inHours += 12;
-        const checkInMinutes = inHours * 60 + inMinutes;
         
+        // Calculate worked minutes using robust helper
+        const checkInMinutes = timeToMinutes(session.checkIn);
         session.workedMinutes = Math.max(0, endTimeMinutes - checkInMinutes);
+        
         await session.save();
 
         // Notify user

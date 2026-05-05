@@ -8,7 +8,7 @@ const SupportRequest = sequelize.define('SupportRequest', {
     autoIncrement: true,
   },
   userId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
   },
   subject: {

@@ -95,21 +95,38 @@ function AppContent() {
 
   // Scroll to top on view or tab change
   useEffect(() => {
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: 'instant' });
+    }
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [activeTab, attendanceTab]);
 
   const isCheckedIn = todayRecord && (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
   const isDayCompleted = todayRecord && (todayRecord.checkOut !== '--:--' && !!todayRecord.checkOut);
 
-  const refreshAttendance = async () => {
+  const refreshAttendance = async (force = false) => {
+    if (!isLoggedIn && !force) return;
     try {
       const records = await api.getAttendanceRecords();
       const now = new Date();
+      
+      // Manual format: "05 May 2026"
       const d = String(now.getDate()).padStart(2, '0');
       const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][now.getMonth()];
       const y = now.getFullYear();
-      const todayStr = `${d} ${m} ${y}`;
-      const record = Array.isArray(records) ? records.find((r: any) => r.date === todayStr) : null;
+      const format1 = `${d} ${m} ${y}`;
+      
+      // Intl format: might have different spacing in some environments
+      const format2 = now.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }).replace(/ /g, ' ').replace(/,/g, '');
+
+      const record = Array.isArray(records) ? records.find((r: any) => 
+        r.date === format1 || r.date === format2
+      ) : null;
       setTodayRecord(record || null);
     } catch (err) {
       console.error(err);
@@ -137,8 +154,9 @@ function AppContent() {
       refreshNotifications();
       // Add a small delay to ensure backend state is fully committed before child components refetch
       setTimeout(() => {
+        refreshAttendance();
         triggerRefresh();
-      }, 800);
+      }, 1500);
     } catch (err) {
       console.error(err);
     } finally {
@@ -273,13 +291,18 @@ function AppContent() {
   const handleLoginSuccess = (user: any) => {
     setUser(user);
     setIsLoggedIn(true);
-    setActiveTab('home'); // Redirect to home on login
+    setActiveTab('home');
+    refreshAttendance(true);
+    refreshNotifications();
   };
 
   const handleLogout = () => {
     api.logout();
+    storage.clearUserSession();
     setUser(null);
     setIsLoggedIn(false);
+    setTodayRecord(null);
+    setNotifications([]);
   };
 
   const renderView = () => {
@@ -388,14 +411,12 @@ function AppContent() {
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={onboardingComplete ? (isLoggedIn ? activeTab : 'auth') : 'onboarding'}
-              initial={{ opacity: 0, x: 20, filter: 'blur(10px)' }}
-              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, x: -20, filter: 'blur(10px)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ 
-                type: 'spring',
-                stiffness: 300,
-                damping: 30,
-                mass: 0.8
+                duration: 0.3,
+                ease: 'easeInOut'
               }}
               className="h-full flex flex-col"
             >

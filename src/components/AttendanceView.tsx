@@ -75,7 +75,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
   // --------------------------------------------
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }, [activeTab]);
 
   const [settings, setSettings] = useState<any>(null);
@@ -210,7 +213,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
   ].filter(d => d.value > 0);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }, [activeTab]);
 
   const getStatusStyle = (status: AttendanceStatus) => {
@@ -642,34 +648,6 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                   <span className="text-sm font-black text-slate-800 dark:text-white">{d.val}</span>
                 </div>
               ))}
-           </div>
-        </div>
-
-        {/* Efficiency Milestone */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm">
-           <div className="flex items-center gap-4 mb-6">
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl text-emerald-600 dark:text-emerald-400">
-                <TrendingUp className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Efficiency Goal</h4>
-                <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Target: 95% Monthly</p>
-              </div>
-           </div>
-           
-           <div className="relative h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${efficiency}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-                className={`h-full rounded-full ${efficiency >= 95 ? 'bg-emerald-500' : efficiency >= 80 ? 'bg-amber-500' : 'bg-red-500'}`}
-              />
-           </div>
-           
-           <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-              <span className="text-slate-400">0%</span>
-              <span className={efficiency >= 95 ? 'text-emerald-500' : 'text-slate-800 dark:text-slate-200'}>{efficiency}% REACHED</span>
-              <span className="text-slate-400">100%</span>
            </div>
         </div>
       </div>
