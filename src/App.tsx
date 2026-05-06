@@ -49,6 +49,14 @@ function AppContent() {
   const [todayRecord, setTodayRecord] = useState<any>(null);
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
+
+  const refreshPendingLeaves = async () => {
+    if (user?.role === 'Admin' || user?.role === 'Manager') {
+      const count = await api.getPendingLeavesCount();
+      setPendingLeavesCount(count);
+    }
+  };
 
   // --- History Navigation Support ---
   useEffect(() => {
@@ -236,6 +244,21 @@ function AppContent() {
   }, [isLoggedIn, user]);
 
   useEffect(() => {
+    if (!isLoggedIn || !user || !['Admin', 'Manager'].includes(user.role)) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const count = await api.getPendingLeavesCount();
+        setPendingLeavesCount(count);
+      } catch (error) {
+        console.error("Failed to refresh pending leaves count:", error);
+      }
+    }, 60000); // Every 1 minute
+
+    return () => clearInterval(interval);
+  }, [isLoggedIn, user]);
+
+  useEffect(() => {
     if (user?.notifSettings) {
       notificationService.setSettings(user.notifSettings);
     }
@@ -248,6 +271,10 @@ function AppContent() {
         try {
           const userData = await api.getUser();
           setUser(userData);
+          if (userData.role === 'Admin' || userData.role === 'Manager') {
+            const count = await api.getPendingLeavesCount();
+            setPendingLeavesCount(count);
+          }
         } catch (err) {
           console.error("Session verification failed", err);
           handleLogout();
@@ -337,7 +364,7 @@ function AppContent() {
         />
       );
       case 'attendance': return <AttendanceView initialTab={attendanceTab} refreshKey={refreshKey} />;
-      case 'leave': return <LeaveView />;
+      case 'leave': return <LeaveView onRefreshPendingCount={refreshPendingLeaves} />;
       case 'profile': return (
         <ProfileView 
           user={user}
@@ -350,7 +377,7 @@ function AppContent() {
           unreadCount={unreadCount}
         />
       );
-      case 'admin': return <AdminDashboard refreshKey={refreshKey} />;
+      case 'admin': return <AdminDashboard refreshKey={refreshKey} onRefreshPendingCount={refreshPendingLeaves} pendingLeavesCount={pendingLeavesCount} />;
       default: return (
         <HomeView 
           onNavigate={(tab: TabType, subTab?: any) => {
@@ -449,6 +476,7 @@ function AppContent() {
             isDayCompleted={isDayCompleted}
             onGlobalAction={handleGlobalCheckInOut}
             isLoading={isAttendanceLoading}
+            pendingLeavesCount={pendingLeavesCount}
           />
         )}
       </div>

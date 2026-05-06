@@ -13,6 +13,7 @@ interface BottomNavProps {
   isDayCompleted: boolean;
   onGlobalAction: () => void;
   isLoading: boolean;
+  pendingLeavesCount?: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ 
@@ -22,7 +23,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   isCheckedIn, 
   isDayCompleted, 
   onGlobalAction, 
-  isLoading 
+  isLoading,
+  pendingLeavesCount = 0
 }) => {
   const handleTabClick = (id: TabType) => {
     setActiveTab(id);
@@ -95,6 +97,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 activeTab === tab.id ? 'text-indigo-600 scale-110' : 'text-slate-400 dark:text-slate-500'
               }`}
             />
+            {tab.id === 'admin' && pendingLeavesCount > 0 && (
+              <span className="absolute top-0 right-1/4 -translate-y-1/2 translate-x-1/2 w-4 h-4 bg-red-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 shadow-md">
+                {pendingLeavesCount > 9 ? '9+' : pendingLeavesCount}
+              </span>
+            )}
             <span
               className={`text-[9px] font-bold uppercase tracking-widest transition-colors duration-300 ${
                 activeTab === tab.id ? 'text-indigo-600 font-black' : 'text-slate-400 dark:text-slate-500'

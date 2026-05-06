@@ -184,9 +184,28 @@ export const api = {
       headers: getHeaders(true),
       body: formData
     });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Failed to submit leave request');
+    }
+
     const result = await res.json();
     notificationService.show('Leave Request Sent', { body: 'Your request has been submitted for approval.' });
     return result;
+  },
+
+  async getPendingLeavesCount() {
+    try {
+      const res = await fetch('/api/leave/pending-count', {
+        headers: getHeaders()
+      });
+      if (!res.ok) return 0;
+      const data = await res.json();
+      return data.count || 0;
+    } catch (error) {
+      return 0;
+    }
   },
 
   async getAnnouncements(includeArchived = false) {

@@ -4,7 +4,9 @@ import LeaveRequest from '../models/LeaveRequest.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import Department from '../models/Department.js';
+import SystemSettings from '../models/SystemSettings.js';
 import { attachmentUpload } from '../config/cloudinary.js';
+import { Op } from 'sequelize';
 
 const router = express.Router();
 
@@ -35,6 +37,7 @@ router.patch('/approve/:id', authenticate, isManager, async (req, res) => {
     }
     
     leave.status = req.body.status; // 'Approved' or 'Rejected'
+    leave.archived = true; // Auto-archive on status change
     await leave.save();
 
     // Create notification for user
@@ -45,9 +48,10 @@ router.patch('/approve/:id', authenticate, isManager, async (req, res) => {
       type: 'LEAVE_STATUS'
     });
 
-    res.send(leave);
+    res.send({ success: true, leave });
   } catch (error) {
-    res.status(400).send(error);
+    console.error('Leave Approval Error:', error);
+    res.status(400).send({ error: error.message || 'Failed to update leave status' });
   }
 });
 
@@ -71,7 +75,7 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
       where: leaveWhere,
       include: [{ 
         model: User, 
-        attributes: ['name', 'employeeId', 'department', 'branchId'],
+        attributes: ['name', 'employeeId', 'department', 'branchId', 'avatar', 'role'],
         where: userWhere,
         include: [
           { model: Department, attributes: ['name'] }
@@ -81,24 +85,40 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
     });
     res.send(history);
   } catch (error) {
-    res.status(500).send(error);
+    console.error('Fetch Error:', error);
+    res.status(500).send({ error: 'Failed to fetch leave requests' });
   }
 });
 
 router.get('/history', authenticate, async (req, res) => {
   try {
-    const { includeArchived } = req.query;
-    const where = { userId: req.user.id };
-    if (includeArchived !== 'true') {
-      where.archived = false;
-    }
     const history = await LeaveRequest.findAll({
-      where,
+      where: { userId: req.user.id },
       order: [['createdAt', 'DESC']]
     });
     res.send(history);
   } catch (error) {
-    res.status(500).send(error);
+    res.status(500).send({ error: 'Failed to fetch history' });
+  }
+});
+
+router.get('/pending-count', authenticate, isManager, async (req, res) => {
+  try {
+    const userWhere = {};
+    if (req.user.role === 'Manager') {
+      userWhere.branchId = req.user.branchId;
+    }
+
+    const count = await LeaveRequest.count({
+      where: { status: 'Pending', archived: false },
+      include: [{ 
+        model: User, 
+        where: userWhere
+      }]
+    });
+    res.send({ count });
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to fetch pending count' });
   }
 });
 
@@ -129,6 +149,48 @@ router.patch('/archive/:id', authenticate, isManager, async (req, res) => {
 router.post('/request', authenticate, attachmentUpload.single('attachment'), async (req, res) => {
   try {
     const leaveData = { ...req.body };
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).send({ error: 'User not found' });
+
+    let settings = await SystemSettings.findOne();
+    if (!settings) settings = await SystemSettings.create({});
+
+    // Parse duration from string like "5 Days"
+    const requestedDays = parseInt(leaveData.duration) || 1;
+    const leaveType = leaveData.type;
+
+    // Get limit based on type
+    let limit = 0;
+    if (leaveType === 'Annual Leave') limit = settings.annualLeaveLimit;
+    else if (leaveType === 'Sick Leave') limit = settings.sickLeaveLimit;
+    else if (leaveType === 'Casual Leave') limit = settings.casualLeaveLimit;
+    else if (leaveType === 'Unpaid Leave') limit = settings.unpaidLeaveLimit;
+    else limit = 999; // Default for others like Maternity if no limit set
+
+    // Count used days for this type in current year
+    const currentYear = new Date().getFullYear().toString();
+    const existingApprovedLeaves = await LeaveRequest.findAll({
+      where: {
+        userId: req.user.id,
+        type: leaveType,
+        status: 'Approved',
+        // Simple year check on the date string or createdAt
+        createdAt: {
+          [Op.gte]: new Date(new Date().getFullYear(), 0, 1),
+          [Op.lt]: new Date(new Date().getFullYear() + 1, 0, 1)
+        }
+      }
+    });
+
+    const usedDays = existingApprovedLeaves.reduce((sum, leave) => {
+      return sum + (parseInt(leave.duration) || 0);
+    }, 0);
+
+    if (usedDays + requestedDays > limit) {
+      return res.status(400).send({ 
+        error: `Leave limit exceeded. You have used ${usedDays}/${limit} days for ${leaveType}. This request would exceed your balance.` 
+      });
+    }
     
     if (req.file) {
       leaveData.attachment = req.file.path; // Cloudinary URL
@@ -142,7 +204,8 @@ router.post('/request', authenticate, attachmentUpload.single('attachment'), asy
     });
     res.status(201).send(leave);
   } catch (error) {
-    res.status(400).send(error);
+    console.error('Leave Request Error:', error);
+    res.status(400).send({ error: error.message || 'Failed to submit leave request' });
   }
 });
 

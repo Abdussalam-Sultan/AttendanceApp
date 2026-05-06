@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter, Download, BellPlus, X, Send, Megaphone, Settings, ShieldCheck, Trash2, Edit2, UserX, Tag, Building2, MapPin, UserPlus, Shield, ArrowRight, User, Eye, Mail, Table, CheckSquare, Square, ChevronDown, Check, Crown, AlertCircle, Calendar, FileText, Loader2, Navigation, HelpCircle, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter, Download, BellPlus, X, Send, Megaphone, Settings, ShieldCheck, Trash2, Edit2, UserX, Tag, Building2, MapPin, UserPlus, Shield, ArrowRight, ArrowLeft, PlusCircle, User, Eye, Mail, Table, CheckSquare, Square, ChevronDown, Check, Crown, AlertCircle, Calendar, FileText, Loader2, Navigation, HelpCircle, MessageSquare, User as UserIcon, Plane } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -43,7 +43,11 @@ import { CopyButton } from './CopyButton';
 
 import { useToast } from './ToastProvider';
 
-export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }) => {
+export const AdminDashboard: React.FC<{ 
+  refreshKey?: number;
+  onRefreshPendingCount?: () => void;
+  pendingLeavesCount?: number;
+}> = ({ refreshKey, onRefreshPendingCount, pendingLeavesCount = 0 }) => {
   const { toast, confirm } = useToast();
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<any>({
@@ -67,7 +71,17 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
   const [searchQuery, setSearchQuery] = useState('');
 
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'workforce' | 'approvals' | 'announcements' | 'employees' | 'branches' | 'departments' | 'settings' | 'support'>('workforce');
+  const [showDateFilters, setShowDateFilters] = useState(false);
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters(prev => 
+      prev.includes(status) 
+        ? prev.filter(s => s !== status) 
+        : [...prev, status]
+    );
+  };
 
   useEffect(() => {
     const mainContent = document.getElementById('main-content');
@@ -210,6 +224,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
     try {
       if (!silent) setLoading(true);
       const userData = await api.getUser();
+      if (!userData) throw new Error("Unauthorized access");
       setUser(userData);
       if (!silent) setLoading(false); 
 
@@ -217,20 +232,19 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
       // Use individual setters to populate data as it arrives
       api.getAdminStats().then(setStats).catch(console.error);
       api.getAllAttendanceRecords().then(setRecords).catch(console.error);
-      api.getAdminLeaveRequests(showArchivedLeaves).then(setLeaveRequests).catch(console.error);
-      api.getAttendanceSettings().then(data => {
-        // Only update settings if we are not editing them or it's the first load
-        if (!isSettingsDirty || activeTab !== 'settings') {
-          setSettings(data);
-        }
-      }).catch(console.error);
-      api.getAnnouncements(showArchivedAnnouncements).then(setAnnouncements).catch(console.error);
-      api.getAdminUsers().then(setUsers).catch(console.error);
-      api.getAdminBranchStats(dateRange.start, dateRange.end).then(setBranchStats).catch(console.error);
-      api.getAdminDepartmentStats(dateRange.start, dateRange.end).then(setDepartmentStats).catch(console.error);
-      api.getDepartments().then(setDepartments).catch(console.error);
+      const statuses = await Promise.allSettled([
+        api.getAdminLeaveRequests(showArchivedLeaves).then(setLeaveRequests),
+        api.getAttendanceSettings().then(data => {
+          if (!isSettingsDirty || activeTab !== 'settings') setSettings(data);
+        }),
+        api.getAnnouncements(showArchivedAnnouncements).then(setAnnouncements),
+        api.getAdminUsers().then(setUsers),
+        api.getAdminBranchStats(dateRange.start, dateRange.end).then(setBranchStats),
+        api.getAdminDepartmentStats(dateRange.start, dateRange.end).then(setDepartmentStats),
+        api.getDepartments().then(setDepartments)
+      ]);
 
-      if (userData.role === 'Admin') {
+      if (userData?.role === 'Admin') {
         api.getBranches().then(setBranches).catch(console.error);
         api.getAdminSupportContacts().then(setSupportContacts).catch(console.error);
         api.getSupportRequests().then(setSupportTickets).catch(console.error);
@@ -545,12 +559,13 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
     setUpdatingId(id);
     try {
       await api.updateLeaveStatus(id, status);
-      setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, status } : req));
+      setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, status, archived: true } : req));
       const statsData = await api.getAdminStats();
       setStats(statsData);
+      if (onRefreshPendingCount) onRefreshPendingCount();
       toast(`Leave request ${status.toLowerCase()}`, status === 'Approved' ? 'success' : 'warning');
-    } catch (error) {
-      toast("Failed to update leave request", "error");
+    } catch (error: any) {
+      toast(error?.message || "Failed to update leave request", "error");
     } finally {
       setUpdatingId(null);
     }
@@ -810,7 +825,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
         `"${u?.Branch?.code || 'N/A'}"`,
         `"${u?.role || 'User'}"`,
         record.date,
-        record.date ? format(new Date(record.date), 'EEEE') : '',
+        record.date ? safeFormat(record.date, 'EEEE') : '',
         record.checkIn,
         record.checkOut || '--:--',
         totalHours,
@@ -866,17 +881,30 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
     );
   };
 
-  const filteredRecords = records.filter(record => {
-    const matchesSearch = record.User?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.User?.employeeId.toLowerCase().includes(searchQuery.toLowerCase());
+  const userAttendanceStatus = React.useMemo(() => {
+    const statusMap: Record<string, string> = {};
+    records.forEach(record => {
+      if (record.userId) {
+        statusMap[record.userId] = record.status;
+      }
+    });
+    return statusMap;
+  }, [records]);
+
+  const filteredRecords = (records || []).filter(record => {
+    const matchesSearch = (record.User?.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+      (record.User?.employeeId?.toLowerCase() || '').includes(searchQuery.toLowerCase());
     
+    // Status filters
+    const matchesStatus = (statusFilters || []).length === 0 || (statusFilters || []).includes((record.status || '').toLowerCase());
+
     // Managers can't see admin records
     const isVisible = user?.role === 'Admin' || record.User?.role !== 'Admin';
     
-    return matchesSearch && isVisible;
+    return matchesSearch && isVisible && matchesStatus;
   });
 
-  const pendingLeaves = leaveRequests.filter(req => req.status === 'Pending');
+  const pendingLeaves = (leaveRequests || []).filter(req => req.status === 'Pending');
 
   if (loading) {
     return (
@@ -915,69 +943,94 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
     <motion.div
       key={emp.id}
       variants={listItemVariants}
-      className={`group relative flex items-center gap-4 p-4 rounded-3xl transition-all duration-300 ${
+      className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-4 rounded-3xl transition-all duration-300 ${
         selectedUserIds.includes(emp.id) 
           ? 'bg-indigo-50/80 dark:bg-indigo-500/10 ring-1 ring-indigo-500/20 shadow-lg' 
           : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/5'
       }`}
     >
-      <button 
-        onClick={() => toggleUserSelection(emp.id)}
-        className="shrink-0"
-      >
-        {selectedUserIds.includes(emp.id) ? (
-          <CheckSquare className="w-5 h-5 text-indigo-600" />
-        ) : (
-          <Square className="w-5 h-5 text-slate-200 dark:text-slate-700" />
-        )}
-      </button>
-
-      <div className="relative shrink-0">
-        <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm">
-          {emp.avatar ? (
-            <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+      <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
+        <button 
+          onClick={() => toggleUserSelection(emp.id)}
+          className="shrink-0"
+        >
+          {selectedUserIds.includes(emp.id) ? (
+            <CheckSquare className="w-5 h-5 text-indigo-600" />
           ) : (
-            <User className="w-6 h-6 text-slate-400" />
+            <Square className="w-5 h-5 text-slate-200 dark:text-slate-700" />
           )}
-        </div>
-        <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 shadow-sm ${
-          emp.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'
-        }`} />
-      </div>
+        </button>
 
-      <div className="flex-1 min-w-0" onClick={() => { setSelectedUser(emp); setShowDetailsModal(true); }}>
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">{emp.name}</h3>
-          {emp.role === 'Admin' && <Crown className="w-3 h-3 text-amber-500" />}
-        </div>
-        <p className="text-[10px] font-medium text-slate-400 truncate">
-          {emp.role} • {emp.role === 'Admin' ? 'Management' : (emp.Department?.name || emp.department)}
-        </p>
-          <div className="flex items-center gap-2 mt-0.5" onClick={e => e.stopPropagation()}>
-            <p className="text-[10px] text-slate-500 font-mono truncate">{emp.email}</p>
-            <CopyButton value={emp.email} label="Email" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="relative shrink-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm">
+            {emp.avatar ? (
+              <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <User className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
+            )}
           </div>
+          <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border-2 border-white dark:border-slate-900 shadow-sm ${
+            emp.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'
+          }`} />
+        </div>
+
+        <div className="flex-1 min-w-0" onClick={() => { setSelectedUser(emp); setShowDetailsModal(true); }}>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">{emp.name}</h3>
+            {emp.role === 'Admin' && <Crown className="w-3 h-3 text-amber-500" />}
+            {userAttendanceStatus[emp.id] && (
+              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
+                userAttendanceStatus[emp.id] === 'present' ? 'bg-emerald-50 text-emerald-600' :
+                userAttendanceStatus[emp.id] === 'late' ? 'bg-amber-50 text-amber-600' :
+                userAttendanceStatus[emp.id] === 'leave' ? 'bg-indigo-50 text-indigo-600' :
+                'bg-red-50 text-red-600'
+              }`}>
+                {userAttendanceStatus[emp.id]}
+              </span>
+            )}
+          </div>
+          <p className="text-[9px] sm:text-[10px] font-medium text-slate-400 truncate">
+            {emp.role} • {emp.role === 'Admin' ? 'Management' : (emp.Department?.name || emp.department)}
+          </p>
+        </div>
       </div>
 
-      <div className="flex gap-1">
-         <button 
-           onClick={() => {
-             setEditingUser({ ...emp });
-             setShowUserModal(true);
-           }}
-           className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"
-         >
-           <Edit2 className="w-4 h-4" />
-         </button>
-         <button 
-           onClick={() => handleDeleteUser(emp)}
-           className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-400 hover:text-red-600 rounded-xl transition-all active:scale-90"
-         >
-           <Trash2 className="w-4 h-4" />
-         </button>
+      <div className="flex items-center justify-between w-full sm:w-auto sm:flex-1 sm:justify-end gap-2 px-1 sm:px-0">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden" onClick={e => e.stopPropagation()}>
+          <p className="text-[9px] sm:text-[10px] text-slate-500 font-mono truncate max-w-[150px] sm:max-w-[200px]">{emp.email}</p>
+          <CopyButton value={emp.email} label="Email" className="scale-75 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+
+        <div className="flex gap-1 shrink-0">
+           <button 
+             onClick={() => {
+               setEditingUser({ ...emp });
+               setShowUserModal(true);
+             }}
+             className="p-1.5 sm:p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"
+           >
+             <Edit2 className="w-4 h-4" />
+           </button>
+           <button 
+             onClick={() => handleDeleteUser(emp)}
+             className="p-1.5 sm:p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-400 hover:text-red-600 rounded-xl transition-all active:scale-90"
+           >
+             <Trash2 className="w-4 h-4" />
+           </button>
+        </div>
       </div>
     </motion.div>
   ));
+
+  const safeFormat = (dateStr: string, formatStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 'N/A';
+      return format(d, formatStr);
+    } catch {
+      return 'N/A';
+    }
+  };
 
   const renderLauncher = () => (
     <motion.div 
@@ -989,21 +1042,37 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
       {/* Stats Grid */}
       <motion.div variants={listItemVariants} className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Staff', value: totalEmployees, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { label: 'Active', value: activeToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Late', value: lateCount, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'Absent', value: absentCount, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-          { label: 'Leave', value: leaveCount, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' }
+          { label: 'Staff', value: totalEmployees, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50', tab: 'employees', filter: null },
+          { label: 'Active', value: activeToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'workforce', filter: 'present' },
+          { label: 'Late', value: lateCount, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', tab: 'workforce', filter: 'late' },
+          { label: 'Absent', value: absentCount, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', tab: 'workforce', filter: 'absent' },
+          { label: 'Leave', value: leaveCount, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50', tab: 'workforce', filter: 'leave' }
         ].map((stat, i) => (
-          <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-            <div className={`w-10 h-10 shrink-0 rounded-2xl ${stat.bg} dark:bg-opacity-10 flex items-center justify-center shadow-sm`}>
+          <button 
+            key={i} 
+            onClick={() => {
+              setActiveTab(stat.tab as any);
+              setIsLauncherOpen(false);
+              if (stat.filter) {
+                setStatusFilters([stat.filter]);
+              } else {
+                setStatusFilters([]);
+              }
+              haptics.impact();
+            }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-3 text-left hover:border-indigo-100 dark:hover:border-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group active:scale-95"
+          >
+            <div className={`w-10 h-10 shrink-0 rounded-2xl ${stat.bg} dark:bg-opacity-10 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform`}>
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-black text-slate-900 dark:text-white leading-none mb-0.5">{stat.value}</p>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{stat.label}</p>
+              <div className="flex items-center gap-1">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{stat.label}</p>
+                <ArrowRight className="w-2 h-2 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+              </div>
             </div>
-          </div>
+          </button>
         ))}
       </motion.div>
 
@@ -1021,6 +1090,8 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
               onClick={() => {
                 setActiveTab(module.id as any);
                 setIsLauncherOpen(false);
+                setStatusFilters([]);
+                haptics.impact();
               }}
               className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-indigo-500/5 transition-all group active:scale-95"
             >
@@ -1057,6 +1128,8 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
               onClick={() => {
                 setActiveTab(module.id as any);
                 setIsLauncherOpen(false);
+                setStatusFilters([]);
+                haptics.impact();
               }}
               className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-slate-500/5 transition-all group active:scale-95"
             >
@@ -1081,7 +1154,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
             <p className="text-xs font-bold leading-tight">{pendingLeaves.length} leave requests need review</p>
           </div>
           <button 
-            onClick={() => { setActiveTab('approvals'); setIsLauncherOpen(false); }}
+            onClick={() => { setActiveTab('approvals'); setIsLauncherOpen(false); setStatusFilters([]); haptics.impact(); }}
             className="relative z-10 px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
           >
             Review
@@ -1976,7 +2049,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   }}
                   className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-xl"
                  >
-                   {viewingAttachment.startsWith('http') ? 'View Full File' : 'Download File'}
+                   {viewingAttachment && viewingAttachment.startsWith('http') ? 'View Full File' : 'Download File'}
                  </button>
               </div>
             </motion.div>
@@ -2003,42 +2076,78 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
             className="space-y-6 animate-in fade-in duration-500"
           >
             <div className="flex flex-col gap-6">
-              <div className="flex items-center justify-between px-2">
+              <div className="flex items-center justify-between px-2 mb-6">
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={() => setIsLauncherOpen(true)}
+                    onClick={() => {
+                      setIsLauncherOpen(true);
+                      setStatusFilters([]);
+                    }}
                     className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-400 group transition-all"
                   >
-                    <ArrowRight className="w-5 h-5 rotate-180 group-hover:-translate-x-1 transition-transform" />
+                    <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                   </button>
                   <div>
-                    <h1 className="text-lg font-bold text-slate-900 dark:text-white capitalize">{activeTab}</h1>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Management Dashboard</p>
+                    <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight capitalize">{activeTab}</h1>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Management Hub</p>
                   </div>
                 </div>
 
                 {['workforce', 'departments', 'branches'].includes(activeTab) && (
-                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <div className="flex items-center gap-3 px-3 border-r border-slate-50 dark:border-slate-800 group">
-                      <div className="p-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
-                        <Clock className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                      </div>
-                      <input 
-                        type="date" 
-                        value={dateRange.start}
-                        onChange={e => setDateRange({...dateRange, start: e.target.value})}
-                        className="bg-transparent border-none text-xs font-bold text-slate-600 dark:text-slate-300 focus:ring-0 p-0 cursor-pointer"
-                      />
-                    </div>
-                    <div className="flex items-center gap-3 px-3 group">
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-600 transition-all" />
-                      <input 
-                        type="date" 
-                        value={dateRange.end}
-                        onChange={e => setDateRange({...dateRange, end: e.target.value})}
-                        className="bg-transparent border-none text-xs font-bold text-slate-600 dark:text-slate-300 focus:ring-0 p-0 cursor-pointer"
-                      />
-                    </div>
+                  <div className="relative flex items-center gap-2 self-end sm:self-auto">
+                    <button 
+                      onClick={() => setShowDateFilters(!showDateFilters)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-2xl border transition-all active:scale-95 ${
+                        showDateFilters 
+                          ? 'bg-indigo-600 text-white border-transparent shadow-lg shadow-indigo-200' 
+                          : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 shadow-sm'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span className="text-[8px] font-black uppercase tracking-widest">
+                        {safeFormat(dateRange.start, 'MM/dd')} - {safeFormat(dateRange.end, 'MM/dd')}
+                      </span>
+                      <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${showDateFilters ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    <AnimatePresence>
+                      {showDateFilters && (
+                        <>
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[100]"
+                            onClick={() => setShowDateFilters(false)}
+                          />
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            className="fixed sm:absolute right-4 left-4 sm:left-auto sm:right-0 top-1/2 sm:top-full sm:mt-2 -translate-y-1/2 sm:translate-y-0 flex flex-col sm:flex-row gap-0 sm:items-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-2xl z-[101] overflow-hidden min-w-[280px] sm:min-w-[400px]"
+                          >
+                             <div className="flex-1 flex flex-col gap-1 p-5 border-b sm:border-b-0 sm:border-r border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Observation Start</label>
+                               <input 
+                                type="date" 
+                                value={dateRange.start}
+                                onChange={e => setDateRange({...dateRange, start: e.target.value})}
+                                className="bg-transparent border-none text-xs font-black text-slate-900 dark:text-white focus:ring-0 p-0 cursor-pointer w-full"
+                              />
+                             </div>
+                             <div className="flex-1 flex flex-col gap-1 p-5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Observation End</label>
+                               <input 
+                                type="date" 
+                                value={dateRange.end}
+                                onChange={e => setDateRange({...dateRange, end: e.target.value})}
+                                className="bg-transparent border-none text-xs font-black text-slate-900 dark:text-white focus:ring-0 p-0 cursor-pointer w-full"
+                              />
+                             </div>
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -2068,7 +2177,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   {/* Sub Tabs */}
                   <div className="flex gap-2 bg-white dark:bg-slate-900 p-1.5 rounded-[24px] border border-slate-100 dark:border-slate-800 shadow-sm self-start">
                     {[
-                      { id: 'tickets' as const, label: 'Tickets', count: supportTickets.filter(t => t.status === 'pending').length },
+                      { id: 'tickets' as const, label: 'Tickets', count: (supportTickets || []).filter(t => t.status === 'pending').length },
                       { id: 'channels' as const, label: 'Channels', count: supportContacts.length }
                     ].map(tab => (
                       <button
@@ -2194,7 +2303,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                               "{ticket.message}"
                             </p>
                             <p className="text-[8px] font-bold text-slate-400 uppercase mt-3 tracking-widest">
-                              Submitted {new Date(ticket.createdAt).toLocaleString()}
+                              Submitted {ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : 'N/A'}
                             </p>
                           </div>
 
@@ -2239,47 +2348,74 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   )}
                 </div>
               ) : activeTab === 'workforce' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Real-time Attendance</h2>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setCompareDepts(!compareDepts)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
-                  compareDepts 
-                    ? 'bg-indigo-600 text-white' 
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                <Table className="w-3.5 h-3.5" /> Compare Depts
-              </button>
-              <button className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
-                <Filter className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={handleDownloadReport}
-                className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"
-                title="Download CSV Report"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+                <div className="flex flex-col gap-6">
+                  {pendingLeaves.length > 0 && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      className="overflow-hidden mb-2"
+                    >
+                      <button 
+                        onClick={() => setActiveTab('approvals')}
+                        className="w-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-5 rounded-[32px] flex items-center justify-between group hover:border-amber-400 transition-all text-left shadow-sm"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-[20px] flex items-center justify-center animate-pulse border border-amber-200/50">
+                            <Plane className="w-6 h-6 translate-y-px" />
+                          </div>
+                          <div>
+                            <h3 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest leading-none mb-1.5">Action Required: Leave Requests</h3>
+                            <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">There {pendingLeaves.length === 1 ? 'is' : 'are'} {pendingLeaves.length} pending request{pendingLeaves.length === 1 ? '' : 's'} waiting for your decision.</p>
+                          </div>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-amber-100 dark:border-amber-900 group-hover:translate-x-1 transition-transform shadow-sm">
+                          <ArrowRight className="w-4 h-4 text-amber-600" />
+                        </div>
+                      </button>
+                    </motion.div>
+                  )}
 
-          {compareDepts ? (
+                  <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div className="p-5 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
+                      <h2 className="text-sm font-bold text-slate-900 dark:text-white">Real-time Attendance</h2>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setCompareDepts(!compareDepts)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
+                            compareDepts 
+                              ? 'bg-indigo-600 text-white' 
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600'
+                          }`}
+                        >
+                          <Table className="w-3.5 h-3.5" /> Compare Depts
+                        </button>
+                        <button className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
+                          <Filter className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={handleDownloadReport}
+                          className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"
+                          title="Download CSV Report"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {compareDepts ? (
             <div className="p-5 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col gap-4">
               <div className="flex flex-wrap gap-2 mb-2 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
                 <p className="w-full text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Select departments to compare</p>
-                {departmentStats.map((dept) => (
-                  <button
-                    key={dept.id}
-                    onClick={() => {
-                      if (selectedDeptsForComp.includes(dept.id)) {
-                        setSelectedDeptsForComp(prev => prev.filter(id => id !== dept.id));
-                      } else {
-                        setSelectedDeptsForComp(prev => [...prev, dept.id]);
-                      }
-                    }}
+                      { (departmentStats || []).map((dept) => (
+                        <button
+                          key={dept.id}
+                          onClick={() => {
+                            if ((selectedDeptsForComp || []).includes(dept.id)) {
+                              setSelectedDeptsForComp(prev => (prev || []).filter(id => id !== dept.id));
+                            } else {
+                              setSelectedDeptsForComp(prev => [...(prev || []), dept.id]);
+                            }
+                          }}
                     className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
                       selectedDeptsForComp.includes(dept.id)
                         ? 'bg-indigo-600 text-white shadow-sm'
@@ -2294,71 +2430,121 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                 )}
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                      <th className="p-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Department</th>
-                      <th className="p-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Staff</th>
-                      <th className="p-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Late</th>
-                      <th className="p-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Absent</th>
-                      <th className="p-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Leave</th>
-                      <th className="p-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Presence</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                    {departmentStats
-                      .filter(d => selectedDeptsForComp.length === 0 || selectedDeptsForComp.includes(d.id))
-                      .map((dept, i) => (
-                      <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                        <td className="p-3">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white leading-none mb-1">{dept.name}</p>
-                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">{dept.code || 'DEPT'}</p>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">{dept.totalEmployees}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="text-[10px] font-black text-amber-600">{(dept as any).lateCount || 0}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="text-[10px] font-black text-red-600">{(dept as any).absentCount || 0}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="text-[10px] font-black text-indigo-600">{(dept as any).leaveCount || 0}</span>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex flex-col items-center gap-1">
-                            <div className="w-20 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                              <div className="h-full bg-emerald-500" style={{ width: `${dept.averageAttendance}%` }}></div>
-                            </div>
-                            <span className="text-[9px] font-bold text-emerald-600">{dept.averageAttendance}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="px-5 py-3 bg-slate-50/50 dark:bg-slate-800/50">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text" 
-                    placeholder="Search by name or employee ID..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                  />
+            <div className="grid gap-3">
+              <div className="bg-indigo-600 p-6 rounded-[32px] text-white flex flex-col gap-4 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+                <div className="flex justify-between items-center relative z-10">
+                   <div>
+                     <p className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.2em] mb-1">Structural Overview</p>
+                     <h2 className="text-xl font-black">{departments.length} DEPARTMENTS</h2>
+                   </div>
+                   <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center">
+                     <Building2 className="w-5 h-5 text-white" />
+                   </div>
                 </div>
               </div>
 
+              <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left border-collapse min-w-[400px]">
+                    <thead>
+                      <tr className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800">
+                        <th className="p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">unit</th>
+                        <th className="p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">count</th>
+                        <th className="p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">metrics</th>
+                        <th className="p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">presence</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                      { (departmentStats || [])
+                        .filter(d => (selectedDeptsForComp || []).length === 0 || (selectedDeptsForComp || []).includes(d.id))
+                        .map((dept, i) => (
+                        <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                          <td className="p-4">
+                            <p className="text-xs font-black text-slate-900 dark:text-white leading-none mb-1 uppercase tracking-tight">{dept.name}</p>
+                            <p className="text-[8px] font-bold text-indigo-500 uppercase tracking-widest">{dept.code || 'SYS-' + (dept.id || '').slice(0,4)}</p>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">{dept.totalEmployees}</span>
+                          </td>
+                          <td className="p-4">
+                             <div className="flex items-center justify-center gap-1.5">
+                               {[(dept as any).lateCount, (dept as any).absentCount, (dept as any).leaveCount].map((v, idx) => (
+                                 <div key={idx} className={`w-1.5 h-1.5 rounded-full ${idx === 0 ? 'bg-amber-500' : idx === 1 ? 'bg-red-500' : 'bg-indigo-500'} ${v > 0 ? 'opacity-100 scale-110' : 'opacity-20'}`} />
+                               ))}
+                             </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex flex-col items-end gap-1.5">
+                              <span className={`text-[10px] font-black ${dept.averageAttendance > 90 ? 'text-emerald-500' : dept.averageAttendance > 70 ? 'text-amber-500' : 'text-red-500'}`}>
+                                {dept.averageAttendance}%
+                              </span>
+                              <div className="w-16 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full ${dept.averageAttendance > 90 ? 'bg-emerald-500' : dept.averageAttendance > 70 ? 'bg-amber-500' : 'bg-red-500'}`} 
+                                  style={{ width: `${dept.averageAttendance}%` }} 
+                                />
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            </div>
+          ) : (
+            <>
+               <div className="px-5 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 space-y-4">
+                 <div className="flex flex-col sm:flex-row gap-3">
+                   <div className="relative flex-1 group">
+                     <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                     <input 
+                       type="text" 
+                       placeholder="Search name, ID or role..." 
+                       value={searchQuery}
+                       onChange={(e) => setSearchQuery(e.target.value)}
+                       className="w-full bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl py-2.5 pl-11 pr-4 text-xs font-black placeholder:text-slate-400 placeholder:font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shrink-0"
+                     />
+                   </div>
+                   
+                   <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+                     {[
+                       { id: 'present', label: 'Present', color: 'bg-emerald-50 text-emerald-600', active: 'bg-emerald-600 text-white' },
+                       { id: 'late', label: 'Late', color: 'bg-amber-50 text-amber-600', active: 'bg-amber-600 text-white' },
+                       { id: 'absent', label: 'Absent', color: 'bg-red-50 text-red-600', active: 'bg-red-600 text-white' },
+                       { id: 'leave', label: 'Leave', color: 'bg-indigo-50 text-indigo-600', active: 'bg-indigo-600 text-white' }
+                     ].map(filter => (
+                       <button
+                         key={filter.id}
+                         onClick={() => toggleStatusFilter(filter.id)}
+                         className={`px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap active:scale-95 ${
+                           statusFilters.includes(filter.id)
+                             ? `${filter.active} shadow-lg shadow-indigo-500/10`
+                             : `${filter.color} hover:bg-slate-100 dark:hover:bg-slate-800`
+                         }`}
+                       >
+                         {filter.label}
+                       </button>
+                     ))}
+                     
+                     {statusFilters.length > 0 && (
+                       <button 
+                         onClick={() => setStatusFilters([])}
+                         className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                       >
+                         <X className="w-4 h-4" />
+                       </button>
+                     )}
+                   </div>
+                 </div>
+               </div>
+
               <div className="p-2 flex flex-col gap-1 max-h-[500px] overflow-y-auto no-scrollbar">
-                {filteredRecords.length > 0 ? (
-                  filteredRecords.map((record, i) => (
+                { (filteredRecords || []).length > 0 ? (
+                  (filteredRecords || []).map((record, i) => (
                     <div 
                       key={i} 
                       className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group"
@@ -2419,55 +2605,58 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
             </>
           )}
         </div>
+      </div>
       ) : activeTab === 'approvals' ? (
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center px-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-2">
             <div className="flex items-center gap-3">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Leave Requests</h2>
+              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Leave Center</h2>
+              <span className="px-2 py-0.5 bg-red-100 dark:bg-red-500/10 text-red-600 text-[8px] font-black uppercase tracking-widest rounded-full">
+                {pendingLeaves.length} PENDING
+              </span>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-auto">
               <button 
                 onClick={() => setShowArchivedLeaves(!showArchivedLeaves)}
-                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border transition-all ${
+                className={`text-[9px] font-bold uppercase tracking-[0.1em] px-4 py-2 rounded-2xl border transition-all active:scale-95 ${
                   showArchivedLeaves 
-                    ? 'bg-indigo-600 border-indigo-600 text-white' 
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
+                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200'
                 }`}
               >
-                {showArchivedLeaves ? 'Hide Archived' : 'Show Archived'}
+                {showArchivedLeaves ? 'Live ONLY' : 'Include History'}
               </button>
             </div>
-            <span className="px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-bold uppercase tracking-wider">
-              {pendingLeaves.length} Pending
-            </span>
           </div>
 
           <div className="flex flex-col gap-3">
-            {leaveRequests.length > 0 ? (
-              leaveRequests
+            { (leaveRequests || []).length > 0 ? (
+              (leaveRequests || [])
                 .filter(req => showArchivedLeaves || !req.archived)
                 .map((req, i) => (
                 <div key={i} className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border shadow-sm transition-all ${
                   req.archived ? 'opacity-60 border-slate-200 dark:border-slate-800 grayscale' : 'border-slate-100 dark:border-slate-800 hover:border-indigo-100'
                 }`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
                         {req.User?.avatar ? (
                           <img src={req.User.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <User className="w-5 h-5" />
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{req.User?.name}</p>
-                          {req.archived && <span className="text-[8px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded uppercase">Archived</span>}
+                          {req.archived && <span className="text-[8px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded uppercase shrink-0">Archived</span>}
                         </div>
                         <p className="text-[10px] font-medium text-slate-400 truncate">
                           {req.User?.role === 'Admin' ? 'MGT' : (req.User?.Department?.name || req.User?.department)} • {req.User?.employeeId}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                        <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
                          req.status === 'Pending' ? 'bg-amber-50 text-amber-600' :
                          req.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
@@ -2556,36 +2745,9 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
         </div>
       ) : activeTab === 'employees' ? (
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center px-2">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Active Employee List</h2>
-              <button 
-                onClick={() => {
-                  const allVisibleIds = users
-                    .filter(emp => user?.role === 'Admin' || emp.role !== 'Admin')
-                    .map(emp => emp.id);
-                  if (selectedUserIds.length === allVisibleIds.length && allVisibleIds.length > 0) {
-                    setSelectedUserIds([]);
-                  } else {
-                    setSelectedUserIds(allVisibleIds);
-                  }
-                }}
-                className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wider hover:text-indigo-600 transition-colors bg-slate-50 dark:bg-slate-800/50 py-1.5 px-2.5 rounded-lg border border-slate-100 dark:border-slate-800"
-              >
-                {selectedUserIds.length === users.filter(emp => user?.role === 'Admin' || emp.role !== 'Admin').length && selectedUserIds.length > 0 ? (
-                  <>
-                    <CheckSquare className="w-3 h-3 text-indigo-600" />
-                    <span>Deselect All</span>
-                  </>
-                ) : (
-                  <>
-                    <Square className="w-3 h-3" />
-                    <span>Select All</span>
-                  </>
-                )}
-              </button>
-            </div>
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between px-2">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Active Employee List</h2>
+            <div className="flex items-center gap-2">
               <button 
                 onClick={() => {
                   setEditingUser({ 
@@ -2600,13 +2762,90 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   });
                   setShowUserModal(true);
                 }}
-                className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 p-2 rounded-xl transition-all"
+                className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-white dark:hover:bg-slate-800/50 px-3 py-2 rounded-xl transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-800"
               >
-                <UserPlus className="w-4 h-4" /> Add Employee
+                <UserPlus className="w-3.5 h-3.5" /> Add New
               </button>
-              <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-lg text-[9px] font-bold uppercase tracking-wider">
-                {users.length} Total
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800/50 px-2 py-1 rounded-lg">
+                {users.length} Employees
               </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search staff..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 rounded-2xl py-2 pl-10 pr-4 text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+              <AnimatePresence>
+                {selectedUserIds.length > 0 && (
+                  <motion.button 
+                    initial={{ opacity: 0, scale: 0.9, x: -10 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, x: -10 }}
+                    onClick={() => {
+                      const allVisibleIds = users
+                        .filter(emp => user?.role === 'Admin' || emp.role !== 'Admin')
+                        .map(emp => emp.id);
+                      if (selectedUserIds.length === allVisibleIds.length && allVisibleIds.length > 0) {
+                        setSelectedUserIds([]);
+                      } else {
+                        setSelectedUserIds(allVisibleIds);
+                      }
+                    }}
+                    className="flex items-center gap-2 shrink-0 px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 border border-indigo-100 dark:border-indigo-500/20 active:scale-95 transition-all"
+                  >
+                    {selectedUserIds.length === users.filter(emp => user?.role === 'Admin' || (emp.role && emp.role !== 'Admin')).length ? (
+                      <>
+                        <CheckSquare className="w-3 h-3" />
+                        <span>Deselect All</span>
+                      </>
+                    ) : (
+                      <>
+                        <Square className="w-3 h-3" />
+                        <span>Select All</span>
+                      </>
+                    )}
+                  </motion.button>
+                )}
+              </AnimatePresence>
+              {[
+                { id: 'present', label: 'Present', color: 'text-emerald-600', dot: 'bg-emerald-500' },
+                { id: 'late', label: 'Late', color: 'text-amber-600', dot: 'bg-amber-500' },
+                { id: 'absent', label: 'Absent', color: 'text-red-600', dot: 'bg-red-500' },
+                { id: 'leave', label: 'Leave', color: 'text-indigo-600', dot: 'bg-indigo-500' }
+              ].map(filter => (
+                <button
+                  key={filter.id}
+                  onClick={() => toggleStatusFilter(filter.id)}
+                  className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider border transition-all active:scale-95 ${
+                    statusFilters.includes(filter.id)
+                      ? `bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-500/50 text-indigo-600 shadow-md`
+                      : `bg-slate-50 dark:bg-slate-800/30 border-transparent text-slate-400 hover:border-slate-200`
+                  }`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${statusFilters.includes(filter.id) ? 'bg-indigo-500' : 'bg-slate-300'}`} />
+                  {filter.label}
+                </button>
+              ))}
+              
+              {statusFilters.length > 0 && (
+                <button 
+                  onClick={() => setStatusFilters([])}
+                  className="shrink-0 p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-300 hover:text-red-500 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                  title="Clear filters"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -2670,13 +2909,19 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
             className="flex flex-col gap-3"
           >
             {users
-              .filter(emp => user?.role === 'Admin' || emp.role !== 'Admin')
-              .filter(emp => 
-                emp.name.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
-                emp.email.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-                (emp.Department?.name || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-                emp.role.toLowerCase().includes(debouncedSearch.toLowerCase())
-              )
+              .filter(emp => user?.role === 'Admin' || (emp.role && emp.role !== 'Admin'))
+              .filter(emp => {
+                const searchStr = (debouncedSearch || searchQuery).toLowerCase();
+                const matchesSearch = (emp.name || '').toLowerCase().includes(searchStr) || 
+                  (emp.email || '').toLowerCase().includes(searchStr) ||
+                  (emp.Department?.name || emp.department || '').toLowerCase().includes(searchStr) ||
+                  (emp.role || '').toLowerCase().includes(searchStr);
+                
+                const currentStatus = (userAttendanceStatus[emp.id] || 'absent').toLowerCase();
+                const matchesStatus = statusFilters.length === 0 || statusFilters.includes(currentStatus);
+                
+                return matchesSearch && matchesStatus;
+              })
               .map((emp, i) => (
                 <MemoizedEmployeeCard key={emp.id} emp={emp} index={i} />
               ))}
@@ -2684,25 +2929,30 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
         </div>
       ) : activeTab === 'branches' && user?.role === 'Admin' ? (
         <div className="flex flex-col gap-6">
-          <div className="flex justify-between items-center px-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Branch Statistics</h2>
+          <div className="flex justify-between items-center px-2 mb-2">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Branch Management</h2>
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800/50 px-2 py-1 rounded-lg">
+                {branches.length} Registered
+              </span>
+            </div>
             <button 
               onClick={() => {
                 setEditingBranch(null);
                 setNewBranch({ name: '', location: '', code: '', latitude: null, longitude: null });
                 setShowBranchModal(true);
               }}
-              className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1"
+              className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-white dark:hover:bg-slate-800/50 px-3 py-2 rounded-xl transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-800"
             >
-              <Building2 className="w-3.5 h-3.5" /> + New Branch
+              <PlusCircle className="w-3.5 h-3.5" /> New Branch
             </button>
           </div>
 
           {/* Branch Stats Grid */}
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
-            <div className="flex gap-4 min-w-[600px]">
+            <div className="flex gap-4">
               {branchStats.map((bStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[240px] sm:min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
@@ -2738,31 +2988,31 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
             </div>
           </div>
 
-          <div className="flex justify-between items-center px-2 mt-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Enterprise Branches</h2>
+          <div className="flex justify-between items-center px-2 mt-4 mb-2">
+            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Enterprise Branches</h2>
           </div>
 
           <div className="grid gap-4">
             {branches.map((branch, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0">
                     <Building2 className="w-6 h-6" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px]">{branch.name}</h3>
-                    <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1 truncate">
-                      <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{branch.location || 'Remote'}</span> • {branch.code || 'NO-CODE'}
-                      {branch.code && <CopyButton value={branch.code} label="Branch Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px] sm:max-w-[240px]">{branch.name}</h3>
+                    <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate max-w-[150px]">{branch.location || 'Remote'}</span> • {branch.code || 'NO-CODE'}
+                      {branch.code && <CopyButton value={branch.code} label="Branch Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block" />}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-right">
+                <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-50 dark:border-slate-800/50">
+                  <div className="text-left sm:text-right">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Staff</p>
                     <p className="text-sm font-black text-slate-900 dark:text-white">{branch.Users?.length || 0}</p>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-1">
+                  <div className="flex gap-1">
                     <button 
                       onClick={() => handleEditBranch(branch)}
                       className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
@@ -2790,25 +3040,30 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
         </div>
       ) : activeTab === 'departments' && user?.role === 'Admin' ? (
         <div className="flex flex-col gap-6">
-          <div className="flex justify-between items-center px-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Department Performance</h2>
+          <div className="flex justify-between items-center px-2 mb-2">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Departments</h2>
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800/50 px-2 py-1 rounded-lg">
+                {departments.length} Units
+              </span>
+            </div>
             <button 
               onClick={() => {
                 setEditingDept(null);
                 setNewDept({ name: '', description: '', code: '' });
                 setShowDeptModal(true);
               }}
-              className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1"
+              className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-white dark:hover:bg-slate-800/50 px-3 py-2 rounded-xl transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-800"
             >
-              <Tag className="w-3.5 h-3.5" /> + New Department
+              <PlusCircle className="w-3.5 h-3.5" /> Create New
             </button>
           </div>
 
           {/* Department Stats Grid */}
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
-            <div className="flex gap-4 min-w-[600px]">
+            <div className="flex gap-4">
               {departmentStats.map((dStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[240px] sm:min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
@@ -2846,31 +3101,31 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
             </div>
           </div>
 
-          <div className="flex justify-between items-center px-2 mt-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">All Departments</h2>
+          <div className="flex justify-between items-center px-2 mt-4 mb-2">
+            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Listing All Units</h2>
           </div>
 
           <div className="grid gap-4">
             {departments.map((dept, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between group">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0">
                     <Tag className="w-6 h-6" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px]">{dept.name}</h3>
-                    <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1 truncate">
-                       <span className="truncate">{dept.description || 'No description'}</span> • {dept.code || 'DEPT'}
-                       {dept.code && <CopyButton value={dept.code} label="Dept Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[180px] sm:max-w-[240px]">{dept.name}</h3>
+                    <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                       <span className="truncate max-w-[150px]">{dept.description || 'No description'}</span> • {dept.code || 'DEPT'}
+                       {dept.code && <CopyButton value={dept.code} label="Dept Code" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block" />}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-right">
+                <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-50 dark:border-slate-800/50">
+                  <div className="text-left sm:text-right">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Employees</p>
                     <p className="text-sm font-black text-slate-900 dark:text-white">{dept.Users?.length || 0}</p>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-1">
+                  <div className="flex gap-1 shrink-0">
                     <button 
                       onClick={() => handleEditDept(dept)}
                       className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
@@ -2891,18 +3146,18 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
         </div>
       ) : activeTab === 'announcements' ? (
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center px-2">
+          <div className="flex justify-between items-center px-2 mb-2">
             <div className="flex items-center gap-3">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Published Announcements</h2>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Announcements</h2>
               <button 
                 onClick={() => setShowArchivedAnnouncements(!showArchivedAnnouncements)}
-                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border transition-all ${
+                className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border transition-all ${
                   showArchivedAnnouncements 
-                    ? 'bg-indigo-600 border-indigo-600 text-white' 
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+                    ? 'bg-slate-800 border-transparent text-white' 
+                    : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 hover:border-slate-200'
                 }`}
               >
-                {showArchivedAnnouncements ? 'Hide Archived' : 'Show Archived'}
+                {showArchivedAnnouncements ? 'Show All' : 'Active Only'}
               </button>
             </div>
             <button 
@@ -2911,9 +3166,9 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                 setNewAnnouncement({ title: '', content: '', category: 'General' });
                 setShowAnnounceModal(true);
               }}
-              className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest"
+              className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-white dark:hover:bg-slate-800/50 px-3 py-2 rounded-xl transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-800"
             >
-              + Create New
+              <PlusCircle className="w-3.5 h-3.5" /> Publish New
             </button>
           </div>
 
@@ -3008,7 +3263,7 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                 {settingsLoading ? 'Syncing...' : 'Ready'}
               </div>
             </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5 focus-within:text-indigo-600 transition-colors">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Working Start Time</label>
                   <div className="relative">
@@ -3110,6 +3365,35 @@ export const AdminDashboard: React.FC<{ refreshKey?: number }> = ({ refreshKey }
                   })}
                 </div>
                 <p className="text-[10px] text-slate-400 italic ml-1">Select the days that are considered official working days for the organization.</p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-4">
+                <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Leave Entitlements (Annual)</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { key: 'annualLeaveLimit', label: 'Annual' },
+                    { key: 'sickLeaveLimit', label: 'Sick' },
+                    { key: 'casualLeaveLimit', label: 'Casual' },
+                    { key: 'unpaidLeaveLimit', label: 'Unpaid' }
+                  ].map((item) => (
+                    <div key={item.key} className="space-y-1.5">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{item.label}</label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          value={settings?.[item.key] || 0}
+                          onChange={(e) => {
+                            setSettings({ ...settings, [item.key]: parseInt(e.target.value) || 0 });
+                            setIsSettingsDirty(true);
+                          }}
+                          className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-xs font-black focus:ring-2 focus:ring-indigo-500 transition-all"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[7px] font-black text-slate-300 uppercase tracking-tighter">Days</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 italic ml-1">Maximum allowed days per employee for each leave type per calendar year.</p>
               </div>
 
               <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-4">

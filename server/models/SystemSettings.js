@@ -54,6 +54,22 @@ const SystemSettings = sequelize.define('SystemSettings', {
   aiAnomalyEnabled: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  annualLeaveLimit: {
+    type: DataTypes.INTEGER,
+    defaultValue: 20,
+  },
+  sickLeaveLimit: {
+    type: DataTypes.INTEGER,
+    defaultValue: 10,
+  },
+  casualLeaveLimit: {
+    type: DataTypes.INTEGER,
+    defaultValue: 5,
+  },
+  unpaidLeaveLimit: {
+    type: DataTypes.INTEGER,
+    defaultValue: 30,
   }
 });
 

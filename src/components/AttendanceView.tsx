@@ -147,12 +147,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       list = list.filter(r => {
         const u = (r as any).User || r.user;
         return (
-          u?.name.toLowerCase().includes(q) || 
-          u?.employeeId.toLowerCase().includes(q) ||
-          r.branchName?.toLowerCase().includes(q) ||
-          r.departmentName?.toLowerCase().includes(q) ||
-          (u?.Branch?.name && u.Branch.name.toLowerCase().includes(q)) ||
-          (u?.Department?.name && u.Department.name.toLowerCase().includes(q))
+          (u?.name?.toLowerCase() || '').includes(q) || 
+          (u?.employeeId?.toLowerCase() || '').includes(q) ||
+          (r.branchName?.toLowerCase() || '').includes(q) ||
+          (r.departmentName?.toLowerCase() || '').includes(q) ||
+          (u?.Branch?.name?.toLowerCase() || '').includes(q) ||
+          (u?.Department?.name?.toLowerCase() || '').includes(q)
         );
       });
     }
