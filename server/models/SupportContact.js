@@ -26,7 +26,13 @@ const SupportContact = sequelize.define('SupportContact', {
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
+}, {
+  indexes: [{ fields: ['companyId'] }]
 });
 
 export default SupportContact;

@@ -17,7 +17,10 @@ import announcementRoutes from './server/routes/announcement.js';
 import notificationRoutes from './server/routes/notification.js';
 import adminRoutes from './server/routes/admin.js';
 import supportRoutes from './server/routes/support.js';
+import companiesRoutes from './server/routes/companies.js';
 import { startAutomations } from './server/services/automation.js';
+import Company from './server/models/Company.js';
+import Branch from './server/models/Branch.js';
 
 dotenv.config();
 
@@ -40,6 +43,7 @@ async function startServer() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/support', supportRoutes);
+  app.use('/api/companies', companiesRoutes);
 
   // Database Sync
   try {
@@ -48,18 +52,33 @@ async function startServer() {
       console.log('Database connection has been established successfully.');
       await sequelize.sync({ alter: true }); 
       
-      // Seed Admin User
+      // Seed Default Company and Admin User
       const adminExists = await User.findOne({ where: { role: 'Admin' } });
       if (!adminExists) {
-        console.log('No admin found. Seeding default admin account...');
+        console.log('No admin found. Setting up default company and admin...');
+        
+        const defaultCompany = await Company.create({
+          name: 'DoorLog Inc.',
+          status: 'Active'
+        });
+
+        const defaultBranch = await Branch.create({
+          name: 'Main Office',
+          location: 'Global Headquarters',
+          code: 'HQ-001',
+          companyId: defaultCompany.id
+        });
+
         await User.create({
           name: process.env.DEFAULT_ADMIN_NAME || 'Admin User',
           email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@doorlog.com',
           password: process.env.DEFAULT_ADMIN_PASSWORD || 'admin123',
           role: 'Admin',
-          employeeId: 'ADM-001'
+          employeeId: 'ADM-001',
+          companyId: defaultCompany.id,
+          branchId: defaultBranch.id
         });
-        console.log('Default admin seeded successfully.');
+        console.log('Default company and admin seeded successfully.');
       }
     }
 

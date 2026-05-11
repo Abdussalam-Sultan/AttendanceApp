@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { User, Branch, Department } from '../models/associations.js';
+import { User, Branch, Department, Company } from '../models/associations.js';
 
 export const authenticate = async (req, res, next) => {
   try {
@@ -13,7 +13,8 @@ export const authenticate = async (req, res, next) => {
     const user = await User.findByPk(decoded.id, {
       include: [
         { model: Branch, attributes: ['id', 'name', 'location'] },
-        { model: Department, attributes: ['id', 'name'] }
+        { model: Department, attributes: ['id', 'name'] },
+        { model: Company, attributes: ['id', 'name', 'status'] }
       ]
     });
 
@@ -21,7 +22,12 @@ export const authenticate = async (req, res, next) => {
       throw new Error();
     }
 
+    if (user.Company && user.Company.status !== 'Active') {
+      return res.status(403).send({ error: 'Company account is deactivated.' });
+    }
+
     req.user = user;
+    req.companyId = user.companyId;
     req.token = token;
     next();
   } catch (error) {

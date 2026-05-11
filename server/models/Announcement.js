@@ -28,6 +28,10 @@ const Announcement = sequelize.define('Announcement', {
   archived: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
 });
 

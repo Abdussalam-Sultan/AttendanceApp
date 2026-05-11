@@ -31,7 +31,6 @@ const User = sequelize.define('User', {
   },
   employeeId: {
     type: DataTypes.STRING,
-    unique: true,
   },
   avatar: {
     type: DataTypes.STRING,
@@ -91,7 +90,20 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  onboardingCompleted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
 }, {
+  indexes: [
+    { fields: ['companyId'] },
+    { fields: ['email'], unique: true },
+    { fields: ['employeeId', 'companyId'], unique: true }
+  ],
   hooks: {
     beforeSave: async (user) => {
       if (user.changed('password')) {

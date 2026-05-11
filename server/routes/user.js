@@ -39,6 +39,7 @@ router.delete('/login-history/:id', authenticate, async (req, res) => {
 router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
   try {
     const users = await User.findAll({
+      where: { companyId: req.companyId },
       attributes: { exclude: ['password'] },
       order: [['name', 'ASC']]
     });
@@ -50,7 +51,7 @@ router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
 
 router.delete('/admin/:id', authenticate, isAdmin, async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!user) return res.status(404).send({ error: 'User not found' });
     if (user.id === req.user.id) return res.status(400).send({ error: 'Cannot delete yourself' });
     
@@ -63,7 +64,7 @@ router.delete('/admin/:id', authenticate, isAdmin, async (req, res) => {
 
 router.post('/admin/reset-device/:id', authenticate, isAdmin, async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!user) return res.status(404).send({ error: 'User not found' });
     
     await user.update({ deviceId: null });
@@ -76,7 +77,7 @@ router.post('/admin/reset-device/:id', authenticate, isAdmin, async (req, res) =
 router.patch('/profile', authenticate, upload.single('avatar'), async (req, res) => {
   try {
     const updates = Object.keys(req.body);
-    const allowedUpdates = ['name', 'department', 'phone', 'address', 'emergencyContact', 'birthDate', 'notifSettings', 'securitySettings'];
+    const allowedUpdates = ['name', 'department', 'phone', 'address', 'emergencyContact', 'birthDate', 'notifSettings', 'securitySettings', 'onboardingCompleted'];
     const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
 
     if (!isValidOperation && !req.file) {

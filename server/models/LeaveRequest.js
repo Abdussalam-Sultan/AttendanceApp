@@ -40,6 +40,10 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
   archived: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
 });
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { User as UserIcon, ChevronRight, Edit3, Camera, Building2, Mail, CreditCard, Users2, Briefcase, Shield, Bell, Settings, LogOut, MapPin, BadgeCheck, Loader2, ArrowLeft, ToggleLeft, ToggleRight, X, Check, Lock, Clock, TrendingUp, ArrowUpRight, ArrowDownRight, Calendar, Navigation, Smartphone } from 'lucide-react';
+import { User as UserIcon, ChevronRight, Edit3, Camera, Building2, Mail, CreditCard, Users2, Briefcase, Shield, Bell, Settings, LogOut, MapPin, BadgeCheck, Loader2, ArrowLeft, ToggleLeft, ToggleRight, X, Check, Lock, Clock, TrendingUp, ArrowUpRight, ArrowDownRight, Calendar, Navigation, Smartphone, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
 import { api } from '../services/api';
 import { User } from '../types';
 import { getCroppedImg, getCroppedBlob } from '../lib/cropImage';
@@ -37,6 +38,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   const [showSecuritySettings, setShowSecuritySettings] = useState(false);
   const [showWorkInfo, setShowWorkInfo] = useState(false);
   const [showAttendanceSummary, setShowAttendanceSummary] = useState(false);
+  const [showPolicy, setShowPolicy] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [showPersonalInfo, setShowPersonalInfo] = useState(false);
   const [personalInfoForm, setPersonalInfoForm] = useState({
@@ -49,7 +52,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   const [isSavingInfo, setIsSavingInfo] = useState(false);
   const [infoSuccess, setInfoSuccess] = useState(false);
 
-  const [notifSettings, setNotifSettings] = useState(propUser?.notifSettings || {
+  const parseSettings = (settings: any, defaultValue: any) => {
+    if (typeof settings === 'string') {
+      try {
+        return JSON.parse(settings);
+      } catch (e) {
+        return defaultValue;
+      }
+    }
+    return settings || defaultValue;
+  };
+
+  const [notifSettings, setNotifSettings] = useState(parseSettings(propUser?.notifSettings, {
     attendance: true,
     leave: true,
     announcements: true,
@@ -60,17 +74,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       start: '22:00',
       end: '07:00'
     }
-  });
+  }));
 
-  const [securitySettings, setSecuritySettings] = useState(propUser?.securitySettings || {
+  const [securitySettings, setSecuritySettings] = useState(parseSettings(propUser?.securitySettings, {
     stayLoggedIn: true,
     locationPrivacy: true
-  });
-  const [appPrefs, setAppPrefs] = useState(propUser?.appSettings || {
+  }));
+  const [appPrefs, setAppPrefs] = useState(parseSettings(propUser?.appSettings, {
     haptic: true,
     geofence: false,
     autoCheckout: false
-  });
+  }));
 
   const [passwordForm, setPasswordForm] = useState({
     current: '',
@@ -179,11 +193,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        // Fetch stats
-        const statsData = await api.getAttendanceStats();
+        // Fetch stats and settings
+        const [statsData, settingsData] = await Promise.all([
+          api.getAttendanceStats(),
+          api.getAttendanceSettings()
+        ]);
         setStats(statsData);
+        setSettings(settingsData);
       } catch (error) {
-        console.error("Failed to fetch profile stats:", error);
+        console.error("Failed to fetch profile data:", error);
       } finally {
         setLoading(false);
       }
@@ -195,6 +213,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
     { label: 'Personal Information', sub: 'Update your personal details', icon: CreditCard, color: 'bg-indigo-50 text-indigo-500', onClick: () => setShowPersonalInfo(true) },
     { label: 'Work Information', sub: 'View your work and job details', icon: Briefcase, color: 'bg-emerald-50 text-emerald-500', onClick: () => setShowWorkInfo(true) },
     { label: 'Attendance Summary', sub: 'View your attendance statistics', icon: BadgeCheck, color: 'bg-orange-50 text-orange-500', onClick: () => setShowAttendanceSummary(true) },
+    { label: 'Company Policy', sub: 'Read rules and regulations', icon: Shield, color: 'bg-indigo-50 text-indigo-500', onClick: () => setShowPolicy(true) },
     { label: 'Security', sub: 'Change password and security options', icon: Shield, color: 'bg-purple-50 text-purple-500', onClick: () => setShowSecuritySettings(true) },
     { label: 'Settings', sub: 'App preferences and notifications', icon: Settings, color: 'bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-400', onClick: () => setShowAppSettings(true) },
   ];
@@ -376,15 +395,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </div>
 
       {/* Info Badges */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-5 gap-6">
         {[
+          { label: 'Organization', value: user.Company?.name || 'Studio Org', icon: Building2, color: 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' },
           { label: 'Employee ID', value: user.employeeId, icon: CreditCard, color: 'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' },
-          { label: 'Department', value: user.role === 'Admin' ? 'MGT' : (user.Department?.name || user.department).slice(0, 11), icon: Users2, color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
-          { label: 'Branch', value: user.branch?.name || user.location || 'Studio', icon: MapPin, color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+          { label: 'Department', value: user.role === 'Admin' ? 'MGT' : (user.Department?.name || user.department || 'N/A').slice(0, 11), icon: Users2, color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+          { label: 'Branch', value: user.branch?.name || user.location || 'HQ', icon: MapPin, color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' },
           { label: 'Role', value: user.role, icon: Briefcase, color: 'bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400' },
         ].map((info, idx) => (
           <div key={idx} className="flex flex-col items-center gap-2 group cursor-pointer relative">
-            {idx < 3 && <div className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 h-10 w-px bg-slate-100 dark:bg-slate-800"></div>}
+            {idx < 4 && <div className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 h-10 w-px bg-slate-100 dark:bg-slate-800"></div>}
             <div className={`p-3 rounded-2xl ${info.color} transition-all duration-300 group-hover:scale-110 shadow-sm border border-white dark:border-slate-800`}>
               <info.icon className="w-5 h-5 mx-auto" />
             </div>
@@ -567,10 +587,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
               <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
                 <div className="grid gap-6">
                    {[
+                     { label: 'Organization', value: user?.Company?.name || 'Main Organization', icon: Building2 },
                      { label: 'Employee ID', value: user?.employeeId, icon: CreditCard },
                      { label: 'Role / Designation', value: user?.role, icon: Briefcase },
                      { label: 'Department', value: user?.role === 'Admin' ? 'Executive Management' : (user?.Department?.name || user?.department), icon: Users2 },
-                     { label: 'Location', value: user?.location, icon: MapPin },
+                     { label: 'Location', value: user?.branch?.name || user?.location || 'Main Office', icon: MapPin },
                      { label: 'Manager', value: user?.manager || 'HR Admin', icon: Shield },
                      { label: 'Join Date', value: user?.joinDate || 'Jan 15, 2024', icon: BadgeCheck },
                      { label: 'Contract Type', value: user?.contractType || 'Full-Time', icon: Lock },
@@ -1129,6 +1150,62 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout, theme, setTh
       </AnimatePresence>
 
 
+
+      {/* Company Policy Overlay */}
+      <AnimatePresence>
+        {showPolicy && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowPolicy(false)}
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200]"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[201] rounded-[40px] shadow-2xl p-8 flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-xl">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Company Policy</h3>
+                    <p className="text-[10px] text-slate-400 font-medium lowercase">Guidelines & Regulations</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowPolicy(false)}
+                  className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-full hover:bg-slate-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-1 custom-scrollbar">
+                <div className="prose prose-slate dark:prose-invert max-w-none text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                  <Markdown>
+                    {settings?.companyPolicy || "The company policy is currently being updated. Please contact HR for more details."}
+                  </Markdown>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+                <button 
+                  onClick={() => setShowPolicy(false)}
+                  className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold py-4 rounded-2xl active:scale-95 transition-all text-xs uppercase tracking-widest"
+                >
+                  I Understand
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Cropping Modal Overlay */}
       <AnimatePresence>

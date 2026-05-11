@@ -7,10 +7,12 @@ import SystemSettings from '../models/SystemSettings.js';
 
 const router = express.Router();
 
-// Public route to fetch branches for registration
+// Public route to fetch branches for a specific company (needed for registration)
 router.get('/branches', async (req, res) => {
   try {
+    const { companyId } = req.query;
     const branches = await Branch.findAll({
+      where: companyId ? { companyId } : {},
       attributes: ['id', 'name']
     });
     res.send(branches);
@@ -21,12 +23,16 @@ router.get('/branches', async (req, res) => {
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, branchId, deviceId } = req.body;
+    const { name, email, password, branchId, deviceId, companyId } = req.body;
     
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).send({ error: 'Email already registered' });
+    }
+
+    if (!companyId) {
+      return res.status(400).send({ error: 'Company ID is required for registration.' });
     }
 
     // Since default is 'Staff', branchId is mandatory
@@ -40,8 +46,18 @@ router.post('/register', async (req, res) => {
       password, 
       role: 'Staff', 
       branchId,
+      companyId,
       deviceId,
       employeeId: `EMP-${Math.floor(1000 + Math.random() * 9000)}` 
+    });
+
+    // Re-fetch user with associations
+    const fullUser = await User.findByPk(user.id, {
+      include: [
+        { model: Branch, attributes: ['id', 'name', 'location'] },
+        { model: Department, attributes: ['id', 'name'] },
+        { model: Company, attributes: ['id', 'name', 'status'] }
+      ]
     });
     
     // Record registration login
@@ -61,7 +77,7 @@ router.post('/register', async (req, res) => {
     });
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'fallback_secret');
-    res.status(201).send({ user, token });
+    res.status(201).send({ user: fullUser, token });
   } catch (error) {
     console.error('Registration Error:', error);
     res.status(400).send({ 
@@ -74,7 +90,14 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password, deviceId } = req.body;
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({ 
+      where: { email },
+      include: [
+        { model: Branch, attributes: ['id', 'name', 'location'] },
+        { model: Department, attributes: ['id', 'name'] },
+        { model: Company, attributes: ['id', 'name', 'status'] }
+      ]
+    });
     
     if (!user) {
       return res.status(401).send({ error: 'Account not found. Please register first.' });

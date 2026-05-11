@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, Plus, FileText, ChevronRight, Clock, MapPin, Filter, ArrowLeft, Send, Upload, X, Camera, RefreshCw, Loader2, Plane, HeartPulse, Coffee, Baby } from 'lucide-react';
+import { Calendar, Plus, FileText, ChevronRight, Clock, MapPin, Filter, ArrowLeft, Send, Upload, X, Camera, RefreshCw, Loader2, Plane, HeartPulse, Coffee, Baby, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
 import { api } from '../services/api';
 import { LeaveRequest } from '../types';
 import { CustomDropdown } from './CustomDropdown';
@@ -14,6 +15,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
   const [showCamera, setShowCamera] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'All' | 'Approved' | 'Rejected' | 'Pending'>('All');
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showPolicy, setShowPolicy] = useState(false);
 
   // --- History Sync for Leave Overlays ---
   useEffect(() => {
@@ -23,6 +25,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
         if (event.state.leaveHistoryOpen === false) setShowHistory(false);
         if (event.state.leaveConfirmationOpen === false) setShowConfirmation(false);
         if (event.state.leaveCameraOpen === false) setShowCamera(false);
+        if (event.state.policyModalOpen === false) setShowPolicy(false);
       }
     };
 
@@ -45,6 +48,10 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
   useEffect(() => {
     if (showCamera) window.history.pushState({ ...window.history.state, leaveCameraOpen: true }, '');
   }, [showCamera]);
+
+  useEffect(() => {
+    if (showPolicy) window.history.pushState({ ...window.history.state, policyModalOpen: true }, '');
+  }, [showPolicy]);
   // ----------------------------------------
   const [leaveHistory, setLeaveHistory] = useState<LeaveRequest[]>([]);
   const [settings, setSettings] = useState<any>(null);
@@ -674,12 +681,12 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
         
         <a 
           href="#" 
-          onClick={(e) => { e.preventDefault(); toast("Opening BoardPolicy_Leave_2024.pdf", "info"); }}
+          onClick={(e) => { e.preventDefault(); setShowPolicy(true); }}
           className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl flex items-center justify-between group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
         >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
-              <FileText className="w-4 h-4" />
+              <Shield className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Company Leave Policy</p>
@@ -689,6 +696,62 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
           <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-700 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
         </a>
       </div>
+
+      {/* Policy Modal */}
+      <AnimatePresence>
+        {showPolicy && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowPolicy(false)}
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200]"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[201] rounded-[40px] shadow-2xl p-8 flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-xl">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Company Policy</h3>
+                    <p className="text-[10px] text-slate-400 font-medium lowercase">Guidelines & Regulations</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowPolicy(false)}
+                  className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-full hover:bg-slate-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-1 custom-scrollbar">
+                <div className="prose prose-slate dark:prose-invert max-w-none text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                  <Markdown>
+                    {settings?.companyPolicy || "The company policy is currently being updated. Please contact HR for more details."}
+                  </Markdown>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+                <button 
+                  onClick={() => setShowPolicy(false)}
+                  className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold py-4 rounded-2xl active:scale-95 transition-all text-xs uppercase tracking-widest"
+                >
+                  I Understand
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Attachment Viewer Modal */}
       <AnimatePresence>

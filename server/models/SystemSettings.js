@@ -70,7 +70,20 @@ const SystemSettings = sequelize.define('SystemSettings', {
   unpaidLeaveLimit: {
     type: DataTypes.INTEGER,
     defaultValue: 30,
+  },
+  companyPolicy: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    unique: true, // One settings per company
   }
+}, {
+  indexes: [
+    { fields: ['companyId'] }
+  ]
 });
 
 export default SystemSettings;

@@ -23,6 +23,15 @@ export interface User {
   manager?: string;
   branchId?: string;
   branch?: Branch;
+  companyId?: string;
+  company?: Company;
+  Company?: Company;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  status?: string;
 }
 
 export interface Department {

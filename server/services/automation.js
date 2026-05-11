@@ -2,27 +2,12 @@ import Attendance from '../models/Attendance.js';
 import SystemSettings from '../models/SystemSettings.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import Company from '../models/Company.js';
 import { Op } from 'sequelize';
 
 const timeToMinutes = (timeStr) => {
-  if (!timeStr || timeStr === '--:--') return 0;
-  
-  // Handle AM/PM format
-  if (timeStr.includes('AM') || timeStr.includes('PM')) {
-    const [time, modifier] = timeStr.split(' ');
-    if (!time) return 0;
-    let [hours, minutes] = time.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return 0;
-    if (hours === 12) hours = 0;
-    if (modifier === 'PM') hours += 12;
-    return hours * 60 + minutes;
-  }
-
-  // Handle HH:MM format
-  const parts = timeStr.split(/[:\.]/).map(Number);
-  const hours = parts[0] || 0;
-  const minutes = parts[1] || 0;
-  if (isNaN(hours) || isNaN(minutes)) return 0;
+  if (!timeStr) return 0;
+  const [hours, minutes] = timeStr.split(':').map(Number);
   return hours * 60 + minutes;
 };
 
@@ -35,63 +20,65 @@ const formatDate = (date) => {
 
 export const runAbsenceCheck = async () => {
   try {
-    const settings = await SystemSettings.findOne();
-    if (!settings) return;
+    const companies = await Company.findAll({ where: { status: 'Active' } });
+    const today = new Date();
+    const todayStr = formatDate(today);
+    const currentDay = today.toLocaleDateString([], { weekday: 'long' });
 
-    const now = new Date();
-    const currentDay = now.toLocaleDateString([], { weekday: 'long' });
-    
-    // Only run on working days
-    const workingDays = settings.workingDays.split(',').map(d => d.trim());
-    if (!workingDays.includes(currentDay)) return;
+    for (const company of companies) {
+      const settings = await SystemSettings.findOne({ where: { companyId: company.id } });
+      if (!settings) continue;
 
-    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
-    const endTimeMinutes = timeToMinutes(settings.workEndTime);
+      // Only run on working days
+      const workingDays = settings.workingDays.split(',').map(d => d.trim());
+      if (!workingDays.includes(currentDay)) continue;
 
-    // Run only after business hours
-    if (currentTimeMinutes < endTimeMinutes) return;
+      const currentTimeMinutes = today.getHours() * 60 + today.getMinutes();
+      const endTimeMinutes = timeToMinutes(settings.workEndTime);
 
-    const todayStr = formatDate(now);
-    
-    // Get all active employees who are not Admins
-    const employees = await User.findAll({
-      where: {
-        status: 'Active',
-        role: { [Op.ne]: 'Admin' }
-      }
-    });
+      // Run only after business hours
+      if (currentTimeMinutes < endTimeMinutes) continue;
 
-    console.log(`[Absence-Tracker] Running check for ${todayStr}. Total active employees: ${employees.length}`);
-
-    for (const employee of employees) {
-      const record = await Attendance.findOne({
-        where: { userId: employee.id, date: todayStr }
+      // Get all active employees who are not Admins for THIS company
+      const employees = await User.findAll({
+        where: {
+          companyId: company.id,
+          status: 'Active',
+          role: { [Op.ne]: 'Admin' }
+        }
       });
 
-      if (!record) {
-        // Create absence record
-        await Attendance.create({
-          userId: employee.id,
-          date: todayStr,
-          day: currentDay,
-          status: 'absent',
-          checkIn: '--:--',
-          checkOut: '--:--',
-          branchName: employee.location || 'Main Office',
-          departmentName: employee.department || 'General'
+      for (const employee of employees) {
+        const record = await Attendance.findOne({
+          where: { userId: employee.id, date: todayStr, companyId: company.id }
         });
 
-        // Notify employee
-        await Notification.create({
-          userId: employee.id,
-          title: 'Daily Attendance Alert',
-          content: `You were marked as absent for today (${todayStr}) as we noticed no sign-in activity.`,
-          type: 'ATTENDANCE_STATUS'
-        });
+        if (!record) {
+          // Create absence record
+          await Attendance.create({
+            userId: employee.id,
+            companyId: company.id,
+            date: todayStr,
+            day: currentDay,
+            status: 'absent',
+            checkIn: '--:--',
+            checkOut: '--:--',
+            branchName: employee.location || 'Main Office',
+            departmentName: employee.department || 'General'
+          });
+
+          // Notify employee
+          await Notification.create({
+            userId: employee.id,
+            companyId: company.id,
+            title: 'Daily Attendance Alert',
+            content: `You were marked as absent for today (${todayStr}) as we noticed no sign-in activity.`,
+            type: 'ATTENDANCE_STATUS'
+          });
+        }
       }
     }
-    
-    console.log(`[Absence-Tracker] Absence check completed for ${todayStr}.`);
+    console.log(`[Absence-Tracker] Check completed for all companies on ${todayStr}.`);
   } catch (error) {
     console.error('[Absence-Tracker] Error:', error);
   }
@@ -99,57 +86,58 @@ export const runAbsenceCheck = async () => {
 
 export const runAutoCheckout = async () => {
   try {
-    const settings = await SystemSettings.findOne();
-    if (!settings || !settings.autoCheckoutEnabled) return;
+    const companies = await Company.findAll({ where: { status: 'Active' } });
+    const today = new Date();
+    const todayStr = formatDate(today);
 
-    const now = new Date();
-    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
-    const endTimeMinutes = timeToMinutes(settings.workEndTime);
+    for (const company of companies) {
+      const settings = await SystemSettings.findOne({ where: { companyId: company.id } });
+      if (!settings || !settings.autoCheckoutEnabled) continue;
 
-    // If it's early in the day, don't do anything
-    // Usually auto-checkout should run after work end time
-    if (currentTimeMinutes < endTimeMinutes) return;
+      const currentTimeMinutes = today.getHours() * 60 + today.getMinutes();
+      const endTimeMinutes = timeToMinutes(settings.workEndTime);
 
-    const todayStr = formatDate(now);
+      // Run only after business hours
+      if (currentTimeMinutes < endTimeMinutes) continue;
 
-    // Find sessions that are still open for today
-    // Ignore records where checkIn is still --:-- (e.g. absent records)
-    const openSessions = await Attendance.findAll({
-      where: {
-        date: todayStr,
-        checkOut: '--:--',
-        checkIn: { [Op.ne]: '--:--' }
+      // Find sessions that are still open for today for THIS company
+      const openSessions = await Attendance.findAll({
+        where: {
+          companyId: company.id,
+          date: todayStr,
+          checkOut: '--:--'
+        }
+      });
+
+      if (openSessions.length > 0) {
+        const checkOutTime12h = new Date(today.getFullYear(), today.getMonth(), today.getDate(), ...settings.workEndTime.split(':').map(Number))
+          .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        for (const session of openSessions) {
+          session.checkOut = checkOutTime12h;
+          session.checkOutStatus = 'Auto Checkout';
+          
+          const [time, modifier] = session.checkIn.split(' ');
+          let [inHours, inMinutes] = time.split(':').map(Number);
+          if (inHours === 12) inHours = 0;
+          if (modifier === 'PM') inHours += 12;
+          const checkInMinutes = inHours * 60 + inMinutes;
+          
+          session.workedMinutes = Math.max(0, endTimeMinutes - checkInMinutes);
+          await session.save();
+
+          // Notify user
+          await Notification.create({
+            userId: session.userId,
+            companyId: company.id,
+            title: 'System Auto-Checkout',
+            content: `You were automatically checked out at ${checkOutTime12h} (end of working hours).`,
+            type: 'ATTENDANCE_STATUS'
+          });
+        }
       }
-    });
-
-    if (openSessions.length > 0) {
-      console.log(`[Auto-Checkout] Found ${openSessions.length} open sessions. Processing...`);
-      
-      const [endH, endM] = settings.workEndTime.split(':').map(Number);
-      const checkOutTime12h = new Date(now.getFullYear(), now.getMonth(), now.getDate(), endH || 17, endM || 0)
-        .toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-      for (const session of openSessions) {
-        session.checkOut = checkOutTime12h;
-        session.checkOutStatus = 'Auto Checkout';
-        
-        // Calculate worked minutes using robust helper
-        const checkInMinutes = timeToMinutes(session.checkIn);
-        session.workedMinutes = Math.max(0, endTimeMinutes - checkInMinutes);
-        
-        await session.save();
-
-        // Notify user
-        await Notification.create({
-          userId: session.userId,
-          title: 'System Auto-Checkout',
-          content: `You were automatically checked out at ${checkOutTime12h} (end of working hours).`,
-          type: 'ATTENDANCE_STATUS'
-        });
-      }
-      
-      console.log(`[Auto-Checkout] Successfully processed ${openSessions.length} sessions.`);
     }
+    console.log(`[Auto-Checkout] Check completed for all companies on ${todayStr}.`);
   } catch (error) {
     console.error('[Auto-Checkout] Error:', error);
   }

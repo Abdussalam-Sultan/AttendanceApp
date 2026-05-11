@@ -168,8 +168,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
     );
   }
 
-  const isCheckedIn = todayRecord && (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
-  const isDayCompleted = todayRecord && (todayRecord.checkOut !== '--:--' && !!todayRecord.checkOut);
+  const isCheckedIn = todayRecord && 
+    (todayRecord.status === 'present' || todayRecord.status === 'late') && 
+    (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
+    
+  const isDayCompleted = (todayRecord && 
+    (todayRecord.status === 'present' || todayRecord.status === 'late' || todayRecord.status === 'absent' || todayRecord.status === 'leave') && 
+    todayRecord.checkOut !== '--:--' && 
+    !!todayRecord.checkOut) || (todayRecord && (todayRecord.status === 'absent' || todayRecord.status === 'leave') && todayRecord.checkOut === '--:--');
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -368,7 +374,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div className="flex justify-between items-center mb-6 px-1">
           <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Monthly Performance</h2>
           <button 
-            onClick={() => onNavigate('attendance')}
+            onClick={() => onNavigate('attendance', 'Calendar')}
             className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 transition-colors uppercase tracking-wider"
           >
             {monthYear} <ChevronRight className="w-3 h-3" />

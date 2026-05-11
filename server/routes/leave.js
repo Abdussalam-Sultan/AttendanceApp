@@ -12,7 +12,8 @@ const router = express.Router();
 
 router.patch('/approve/:id', authenticate, isManager, async (req, res) => {
   try {
-    const leave = await LeaveRequest.findByPk(req.params.id, {
+    const leave = await LeaveRequest.findOne({
+      where: { id: req.params.id, companyId: req.companyId },
       include: [{ model: User, attributes: ['branchId', 'role'] }]
     });
     
@@ -55,9 +56,70 @@ router.patch('/approve/:id', authenticate, isManager, async (req, res) => {
   }
 });
 
+router.patch('/bulk-update', authenticate, isManager, async (req, res) => {
+  try {
+    const { ids, status } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).send({ error: 'No IDs provided' });
+    }
+    if (!['Approved', 'Rejected'].includes(status)) {
+      return res.status(400).send({ error: 'Invalid status' });
+    }
+
+    const leaves = await LeaveRequest.findAll({
+      where: { id: ids, companyId: req.companyId },
+      include: [{ model: User, attributes: ['branchId', 'role'] }]
+    });
+
+    const updatedLeaves = [];
+    const errors = [];
+
+    for (const leave of leaves) {
+      if (leave.status !== 'Pending') continue;
+
+      // Safety check for Managers
+      if (req.user.role === 'Manager') {
+        if (leave.userId === req.user.id) {
+          errors.push(`Leave ${leave.id}: Access denied.`);
+          continue;
+        }
+        if (leave.User.role === 'Admin' || leave.User.role === 'Manager') {
+           errors.push(`Leave ${leave.id}: Management level restricted.`);
+           continue;
+        }
+        if (leave.User.branchId !== req.user.branchId) {
+           errors.push(`Leave ${leave.id}: Branch mismatch.`);
+           continue;
+        }
+      }
+
+      leave.status = status;
+      leave.archived = true;
+      await leave.save();
+      updatedLeaves.push(leave);
+
+      await Notification.create({
+        userId: leave.userId,
+        title: `Leave ${status}`,
+        content: `Your leave request for ${leave.date} (${leave.type}) has been ${status.toLowerCase()}.`,
+        type: 'LEAVE_STATUS'
+      });
+    }
+
+    res.send({ 
+      success: true, 
+      count: updatedLeaves.length, 
+      errors: errors.length > 0 ? errors : undefined 
+    });
+  } catch (error) {
+    console.error('Bulk Approval Error:', error);
+    res.status(500).send({ error: 'Failed to update leave requests' });
+  }
+});
+
 router.get('/admin/all', authenticate, isManager, async (req, res) => {
   try {
-    const userWhere = {};
+    const userWhere = { companyId: req.companyId };
     if (req.user.role === 'Manager') {
       userWhere.role = 'Staff'; // Managers only see Staff leave requests
       if (req.user.branchId) {
@@ -66,7 +128,7 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
     }
 
     const { includeArchived } = req.query;
-    const leaveWhere = {};
+    const leaveWhere = { companyId: req.companyId };
     if (includeArchived !== 'true') {
       leaveWhere.archived = false;
     }
@@ -93,7 +155,7 @@ router.get('/admin/all', authenticate, isManager, async (req, res) => {
 router.get('/history', authenticate, async (req, res) => {
   try {
     const history = await LeaveRequest.findAll({
-      where: { userId: req.user.id },
+      where: { userId: req.user.id, companyId: req.companyId },
       order: [['createdAt', 'DESC']]
     });
     res.send(history);
@@ -104,13 +166,13 @@ router.get('/history', authenticate, async (req, res) => {
 
 router.get('/pending-count', authenticate, isManager, async (req, res) => {
   try {
-    const userWhere = {};
+    const userWhere = { companyId: req.companyId };
     if (req.user.role === 'Manager') {
       userWhere.branchId = req.user.branchId;
     }
 
     const count = await LeaveRequest.count({
-      where: { status: 'Pending', archived: false },
+      where: { status: 'Pending', archived: false, companyId: req.companyId },
       include: [{ 
         model: User, 
         where: userWhere
@@ -124,13 +186,15 @@ router.get('/pending-count', authenticate, isManager, async (req, res) => {
 
 router.patch('/archive/:id', authenticate, isManager, async (req, res) => {
   try {
-    const leave = await LeaveRequest.findByPk(req.params.id);
+    const leave = await LeaveRequest.findOne({
+      where: { id: req.params.id, companyId: req.companyId }
+    });
     if (!leave) return res.status(404).send({ error: 'Leave request not found' });
     
     // Safety check for archiving: must be the owner OR an admin/manager (who already passed middleware)
     // Managers can archive staff leaves in their branch
     if (req.user.role === 'Manager' && leave.userId !== req.user.id) {
-       const user = await User.findByPk(leave.userId);
+       const user = await User.findOne({ where: { id: leave.userId, companyId: req.companyId } });
        if (!user || user.branchId !== req.user.branchId) {
          return res.status(403).send({ error: 'Access denied.' });
        }
@@ -149,11 +213,11 @@ router.patch('/archive/:id', authenticate, isManager, async (req, res) => {
 router.post('/request', authenticate, attachmentUpload.single('attachment'), async (req, res) => {
   try {
     const leaveData = { ...req.body };
-    const user = await User.findByPk(req.user.id);
+    const user = await User.findOne({ where: { id: req.user.id, companyId: req.companyId } });
     if (!user) return res.status(404).send({ error: 'User not found' });
 
-    let settings = await SystemSettings.findOne();
-    if (!settings) settings = await SystemSettings.create({});
+    let settings = await SystemSettings.findOne({ where: { companyId: req.companyId } });
+    if (!settings) settings = await SystemSettings.create({ companyId: req.companyId });
 
     // Parse duration from string like "5 Days"
     const requestedDays = parseInt(leaveData.duration) || 1;
@@ -186,19 +250,10 @@ router.post('/request', authenticate, attachmentUpload.single('attachment'), asy
       return sum + (parseInt(leave.duration) || 0);
     }, 0);
 
-    if (usedDays + requestedDays > limit) {
-      return res.status(400).send({ 
-        error: `Leave limit exceeded. You have used ${usedDays}/${limit} days for ${leaveType}. This request would exceed your balance.` 
-      });
-    }
-    
-    if (req.file) {
-      leaveData.attachment = req.file.path; // Cloudinary URL
-    }
-
     const leave = await LeaveRequest.create({
       ...leaveData,
       userId: req.user.id,
+      companyId: req.companyId,
       date: `${leaveData.startDate} - ${leaveData.endDate}`,
       status: 'Pending'
     });

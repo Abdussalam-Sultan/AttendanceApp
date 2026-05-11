@@ -13,6 +13,7 @@ import { useToast } from './ToastProvider';
 export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(true);
+  const [isNewOrg, setIsNewOrg] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
@@ -24,12 +25,32 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     email: '',
     password: '',
     name: '',
-    branchId: ''
+    branchId: '',
+    companyId: '',
+    companyName: ''
   });
 
   useEffect(() => {
-    if (!isLogin) {
-      fetch('/api/auth/branches')
+    if (!isLogin && !isNewOrg) {
+      // If we don't have a companyId yet, we might need a way to pick it
+      // For now, let's allow finding companies or require a code
+    }
+  }, [isLogin, isNewOrg, toast]);
+
+  const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!isLogin && !isNewOrg) {
+        fetch('/api/companies/all-public') // I'll need to create this or allow finding by domain
+          .then(res => res.json())
+          .then(data => setAvailableCompanies(data))
+          .catch(() => {});
+    }
+  }, [isLogin, isNewOrg]);
+
+  useEffect(() => {
+    if (!isLogin && !isNewOrg && formData.companyId) {
+      fetch(`/api/auth/branches?companyId=${formData.companyId}`)
         .then(res => {
           if (!res.ok) throw new Error('Failed to fetch branches');
           return res.json();
@@ -40,7 +61,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
           toast("Notice: Admin features might be limited. Branches could not be loaded.", "warning");
         });
     }
-  }, [isLogin, toast]);
+  }, [formData.companyId, isLogin, isNewOrg, toast]);
 
   const validatePassword = (password: string) => {
     if (!password) return false;
@@ -54,10 +75,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLogin) {
-      if (!formData.branchId) {
+      if (isNewOrg) {
+        if (!formData.companyName) {
+          setError("Please enter organization name.");
+          return;
+        }
+      } else if (!formData.branchId) {
         setError("Please select a branch.");
         return;
       }
+      
       const passValid = validatePassword(formData.password);
       if (passValid !== true) {
         setError(passValid as string);
@@ -75,31 +102,53 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     }
     
     try {
-      let user;
-      const payload = isLogin 
-        ? { email: formData.email, password: formData.password, deviceId }
-        : { 
-            name: formData.name, 
-            email: formData.email, 
-            password: formData.password,
-            branchId: formData.branchId,
-            deviceId // Also send for registration so first device is bound
-          };
+      let data;
+      if (isNewOrg) {
+        const res = await fetch('/api/companies/setup', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             companyName: formData.companyName,
+             adminName: formData.name,
+             adminEmail: formData.email,
+             adminPassword: formData.password
+           })
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Setup failed');
         
-      const res = await fetch(isLogin ? '/api/auth/login' : '/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        let errorMessage = data.error || (isLogin ? 'Login failed' : 'Registration failed');
-        if (data.details) {
-          errorMessage += `: ${data.details}`;
+        // After setup, automatically log them in
+        const loginRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email, password: formData.password, deviceId })
+        });
+        data = await loginRes.json();
+        if (!loginRes.ok) throw new Error(data.error || 'Initial login failed');
+      } else {
+        const payload = isLogin 
+          ? { email: formData.email, password: formData.password, deviceId }
+          : { 
+              name: formData.name, 
+              email: formData.email, 
+              password: formData.password,
+              branchId: formData.branchId,
+              companyId: formData.companyId,
+              deviceId 
+            };
+          
+        const res = await fetch(isLogin ? '/api/auth/login' : '/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        data = await res.json();
+        if (!res.ok) {
+          let errorMessage = data.error || (isLogin ? 'Login failed' : 'Registration failed');
+          if (data.details) errorMessage += `: ${data.details}`;
+          throw new Error(errorMessage);
         }
-        throw new Error(errorMessage);
       }
       
       api.saveAuthData(data.user, data.token);
@@ -127,12 +176,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       <div className="pt-12 pb-10 text-center">
         <Logo size={80} className="mb-8 drop-shadow-2xl" />
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-          {isLogin ? 'Welcome Back' : 'Create Account'}
+          {isNewOrg ? 'New Organization' : (isLogin ? 'Welcome Back' : 'Join Team')}
         </h1>
         <p className="text-xs font-medium text-slate-500 max-w-[220px] mx-auto leading-relaxed">
-          {isLogin 
-            ? 'Sign in to access your secure workplace dashboard.' 
-            : 'Join DoorLog to manage your access and attendance.'}
+          {isNewOrg 
+            ? 'Set up a new space for your school or business.' 
+            : (isLogin ? 'Sign in to access your secure workplace dashboard.' : 'Follow the link or use a code to join your group.')}
         </p>
       </div>
 
@@ -147,38 +196,77 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
           <AnimatePresence mode="wait">
             {!isLogin && (
               <motion.div 
+                key={isNewOrg ? "new-org" : "register"}
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
+                {isNewOrg && (
+                   <>
+                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Org / Business Name</label>
+                     <div className="relative mb-5">
+                       <ArrowRight className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                       <input 
+                         type="text" 
+                         required 
+                         placeholder="e.g. Lagos Tech School"
+                         value={formData.companyName}
+                         onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                         className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                       />
+                     </div>
+                   </>
+                )}
+
+                {!isNewOrg && (
+                  <>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Select Organization</label>
+                    <div className="relative mb-5">
+                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                      <select 
+                        required 
+                        value={formData.companyId}
+                        onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
+                      >
+                        <option value="">Select Company</option>
+                        {availableCompanies.filter(c => c && c.id).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Working Branch</label>
+                    <div className="relative mb-5">
+                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                      <select 
+                        required 
+                        disabled={!formData.companyId}
+                        value={formData.branchId}
+                        onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
+                      >
+                        <option value="">{formData.companyId ? 'Select your branch' : 'Pick company first'}</option>
+                        {branches.filter(b => b && b.id).map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+                
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Full Name</label>
                 <div className="relative mb-5">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                   <input 
                     type="text" 
                     required 
-                    placeholder="e.g. Emeka Obi"
+                    placeholder={isNewOrg ? "Admin Full Name" : "e.g. Emeka Obi"}
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white outline-none focus:ring-2 focus:ring-indigo-500/20" 
                   />
-                </div>
-
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Working Branch</label>
-                <div className="relative mb-5">
-                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
-                  <select 
-                    required 
-                    value={formData.branchId}
-                    onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
-                  >
-                    <option value="">Select your branch</option>
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
                 </div>
               </motion.div>
             )}
@@ -270,14 +358,41 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
 
         <div className="mt-8 text-center">
           <p className="text-xs font-medium text-slate-400 mb-1">
-            {isLogin ? "Don't have an account?" : "Already have an account?"}
+            {isLogin ? "Don't have an account?" : (isNewOrg ? "Back to registration?" : "Organization not listed?")}
           </p>
-          <button 
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-xs font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors underline-offset-4 hover:underline"
-          >
-            {isLogin ? "Register now" : "Back to login"}
-          </button>
+          <div className="flex flex-col gap-2">
+            <button 
+              type="button"
+              onClick={() => {
+                if (isNewOrg) {
+                    setIsNewOrg(false);
+                    setIsLogin(false);
+                } else {
+                    setIsLogin(!isLogin);
+                    setIsNewOrg(false);
+                    setFormData(prev => ({ ...prev, branchId: '', companyId: '' }));
+                }
+                setError(null);
+              }}
+              className="text-xs font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors underline-offset-4 hover:underline"
+            >
+              {isLogin ? "Join your team" : "Back to login"}
+            </button>
+            {(isLogin || !isNewOrg) && (
+              <button 
+                type="button"
+                onClick={() => {
+                   setIsNewOrg(true);
+                   setIsLogin(false);
+                   setError(null);
+                   setFormData(prev => ({ ...prev, companyId: '', branchId: '', companyName: '' }));
+                }}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:opacity-80 underline-offset-4 hover:underline"
+              >
+                Register my Organization
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -10,15 +10,23 @@ const Department = sequelize.define('Department', {
   name: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
   },
   description: {
     type: DataTypes.TEXT,
   },
   code: {
     type: DataTypes.STRING,
-    unique: true,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
+}, {
+  indexes: [
+    { fields: ['companyId'] },
+    { fields: ['name', 'companyId'], unique: true },
+    { fields: ['code', 'companyId'], unique: true }
+  ]
 });
 
 export default Department;

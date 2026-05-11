@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 
-const Organization = sequelize.define('Organization', {
+const Company = sequelize.define('Company', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -11,25 +11,28 @@ const Organization = sequelize.define('Organization', {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  slug: {
+  domain: {
     type: DataTypes.STRING,
+    allowNull: true,
     unique: true,
-    allowNull: false,
   },
   logo: {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  address: {
+    type: DataTypes.TEXT,
+  },
+  status: {
+    type: DataTypes.STRING,
+    defaultValue: 'Active',
+  },
   settings: {
     type: DataTypes.JSON,
     defaultValue: {},
-  },
-  plan: {
-    type: DataTypes.STRING,
-    defaultValue: 'Free',
-  },
+  }
 }, {
   timestamps: true,
 });
 
-export default Organization;
+export default Company;

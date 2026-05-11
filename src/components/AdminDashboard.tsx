@@ -67,6 +67,7 @@ export const AdminDashboard: React.FC<{
   const [departmentStats, setDepartmentStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedLeaveIds, setSelectedLeaveIds] = useState<(string | number)[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -571,6 +572,35 @@ export const AdminDashboard: React.FC<{
     }
   };
 
+  const handleBulkLeaveAction = async (status: 'Approved' | 'Rejected') => {
+    if (selectedLeaveIds.length === 0) return;
+    
+    const confirmed = await confirm(
+      `Bulk ${status}`, 
+      `Are you sure you want to ${status.toLowerCase()} ${selectedLeaveIds.length} selected leave requests?`
+    );
+    if (!confirmed) return;
+
+    setUpdatingId('bulk');
+    try {
+      const response = await api.bulkUpdateLeaves(selectedLeaveIds as any, status);
+      toast(`${response.count} requests ${status.toLowerCase()}ed successfully`, "success");
+      
+      setLeaveRequests(prev => prev.map(req => 
+        selectedLeaveIds.includes(req.id) ? { ...req, status, archived: true } : req
+      ));
+      setSelectedLeaveIds([]);
+      
+      const statsData = await api.getAdminStats();
+      setStats(statsData);
+      if (onRefreshPendingCount) onRefreshPendingCount();
+    } catch (error: any) {
+      toast(error?.message || "Bulk update failed", "error");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const handleArchiveLeave = async (id: string | number, currentStatus: boolean) => {
     const action = currentStatus ? "Unarchive" : "Archive";
     const confirmed = await confirm(
@@ -1039,6 +1069,26 @@ export const AdminDashboard: React.FC<{
       animate="show"
       className="space-y-8"
     >
+      {/* Direct Quick Approval Card */}
+      {pendingLeaves.length > 0 && (
+        <motion.div 
+          variants={listItemVariants}
+          className="p-4 bg-indigo-600 rounded-[28px] text-white flex items-center justify-between gap-4 mt-2 overflow-hidden relative shadow-lg shadow-indigo-500/30"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+          <div className="relative z-10">
+            <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-0.5">Pending Action</p>
+            <p className="text-xs font-bold leading-tight">{pendingLeaves.length} leave requests need review</p>
+          </div>
+          <button 
+            onClick={() => { setActiveTab('approvals'); setIsLauncherOpen(false); setStatusFilters([]); haptics.impact(); }}
+            className="relative z-10 px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
+          >
+            Review
+          </button>
+        </motion.div>
+      )}
+
       {/* Stats Grid */}
       <motion.div variants={listItemVariants} className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
@@ -1141,26 +1191,6 @@ export const AdminDashboard: React.FC<{
           ))}
         </div>
       </motion.div>
-
-      {/* Direct Quick Approval Card */}
-      {pendingLeaves.length > 0 && (
-        <motion.div 
-          variants={listItemVariants}
-          className="p-4 bg-indigo-600 rounded-[28px] text-white flex items-center justify-between gap-4 mt-2 overflow-hidden relative shadow-lg shadow-indigo-500/30"
-        >
-          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
-          <div className="relative z-10">
-            <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-0.5">Pending Action</p>
-            <p className="text-xs font-bold leading-tight">{pendingLeaves.length} leave requests need review</p>
-          </div>
-          <button 
-            onClick={() => { setActiveTab('approvals'); setIsLauncherOpen(false); setStatusFilters([]); haptics.impact(); }}
-            className="relative z-10 px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
-          >
-            Review
-          </button>
-        </motion.div>
-      )}
     </motion.div>
   );
 
@@ -1849,6 +1879,12 @@ export const AdminDashboard: React.FC<{
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee ID</p>
                       <p className="text-sm font-black text-slate-900 dark:text-white">{selectedUser.employeeId}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Organization</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">
+                        {selectedUser.Company?.name || 'Main Organization'}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department</p>
@@ -2608,6 +2644,44 @@ export const AdminDashboard: React.FC<{
       </div>
       ) : activeTab === 'approvals' ? (
         <div className="flex flex-col gap-4">
+          <AnimatePresence>
+            {selectedLeaveIds.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: -50, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -50, scale: 0.9 }}
+                className="fixed top-24 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-md z-[101] bg-slate-900/95 dark:bg-slate-800/95 text-white p-4 rounded-[40px] shadow-2xl flex items-center justify-between gap-4 border border-slate-700/50 backdrop-blur-2xl ring-1 ring-white/10"
+              >
+                <div className="flex flex-col pl-4">
+                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Bulk Actions</span>
+                  <span className="text-[10px] font-bold text-slate-400">{selectedLeaveIds.length} Requests Selected</span>
+                </div>
+                <div className="flex gap-2 pr-2">
+                  <button 
+                    onClick={() => handleBulkLeaveAction('Approved')}
+                    disabled={updatingId === 'bulk'}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-emerald-500/20"
+                  >
+                    {updatingId === 'bulk' ? 'Processing...' : 'Approve'}
+                  </button>
+                  <button 
+                    onClick={() => handleBulkLeaveAction('Rejected')}
+                    disabled={updatingId === 'bulk'}
+                    className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-red-500/20"
+                  >
+                    Reject
+                  </button>
+                  <button 
+                    onClick={() => setSelectedLeaveIds([])}
+                    className="bg-slate-800 dark:bg-slate-700 text-slate-400 p-3 rounded-2xl hover:bg-slate-700 hover:text-white transition-all active:scale-90"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-2">
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Leave Center</h2>
@@ -2615,7 +2689,32 @@ export const AdminDashboard: React.FC<{
                 {pendingLeaves.length} PENDING
               </span>
             </div>
+            
             <div className="flex items-center gap-2 self-end sm:self-auto">
+              {pendingLeaves.length > 0 && (
+                <button 
+                  onClick={() => {
+                    const allPendingIds = pendingLeaves.map(r => r.id);
+                    if (selectedLeaveIds.length === allPendingIds.length) {
+                      setSelectedLeaveIds([]);
+                    } else {
+                      setSelectedLeaveIds(allPendingIds);
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all active:scale-95 text-[9px] font-black uppercase tracking-widest ${
+                    selectedLeaveIds.length === pendingLeaves.length && pendingLeaves.length > 0
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-500/10 dark:border-indigo-500/20'
+                      : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 shadow-sm'
+                  }`}
+                >
+                  {selectedLeaveIds.length === pendingLeaves.length && pendingLeaves.length > 0 ? (
+                    <CheckSquare className="w-3.5 h-3.5" />
+                  ) : (
+                    <Square className="w-3.5 h-3.5 text-slate-300" />
+                  )}
+                  {selectedLeaveIds.length === pendingLeaves.length && pendingLeaves.length > 0 ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
               <button 
                 onClick={() => setShowArchivedLeaves(!showArchivedLeaves)}
                 className={`text-[9px] font-bold uppercase tracking-[0.1em] px-4 py-2 rounded-2xl border transition-all active:scale-95 ${
@@ -2634,9 +2733,31 @@ export const AdminDashboard: React.FC<{
               (leaveRequests || [])
                 .filter(req => showArchivedLeaves || !req.archived)
                 .map((req, i) => (
-                <div key={i} className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border shadow-sm transition-all ${
+                <div key={i} className={`relative bg-white dark:bg-slate-900 p-4 rounded-3xl border shadow-sm transition-all ${
                   req.archived ? 'opacity-60 border-slate-200 dark:border-slate-800 grayscale' : 'border-slate-100 dark:border-slate-800 hover:border-indigo-100'
-                }`}>
+                } ${selectedLeaveIds.includes(req.id) ? 'ring-2 ring-indigo-500 border-transparent bg-indigo-50/10' : ''}`}>
+                  {req.status === 'Pending' && !req.archived && (
+                    <button 
+                      onClick={() => {
+                        if (selectedLeaveIds.includes(req.id)) {
+                          setSelectedLeaveIds(prev => prev.filter(id => id !== req.id));
+                        } else {
+                          setSelectedLeaveIds(prev => [...prev, req.id]);
+                        }
+                      }}
+                      className={`absolute top-4 left-4 z-10 p-2 shadow-xl rounded-2xl border transition-all active:scale-90 -translate-x-1/2 -translate-y-1/2 ${
+                        selectedLeaveIds.includes(req.id)
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-300 hover:border-slate-200'
+                      }`}
+                    >
+                      {selectedLeaveIds.includes(req.id) ? (
+                        <CheckSquare className="w-5 h-5" />
+                      ) : (
+                        <Square className="w-5 h-5" />
+                      )}
+                    </button>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
@@ -3526,6 +3647,23 @@ export const AdminDashboard: React.FC<{
                 </div>
               </div>
 
+              <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-4">
+                <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Company Policy</h4>
+                <div className="space-y-1.5 focus-within:text-indigo-600 transition-colors">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Main Policy Content (Markdown Supported)</label>
+                  <textarea 
+                    value={settings?.companyPolicy || ''}
+                    onChange={(e) => {
+                      setSettings({ ...settings, companyPolicy: e.target.value });
+                      setIsSettingsDirty(true);
+                    }}
+                    placeholder="Describe the company attendance and leave policy here..."
+                    className="w-full h-48 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-xs font-medium focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 italic ml-1">This policy will be visible to all employees in the Leave and Profile sections.</p>
+              </div>
+
               <button 
                 type="submit"
                 disabled={settingsLoading}
@@ -3779,6 +3917,12 @@ export const AdminDashboard: React.FC<{
             isOpen={!!selectedRecord}
             onClose={() => setSelectedRecord(null)}
             currentUser={user}
+            onUpdate={(updatedRecord) => {
+              setRecords(prev => prev.map(r => r.id === updatedRecord.id ? { ...r, ...updatedRecord } : r));
+              setSelectedRecord(updatedRecord);
+              // Also update stats since status might have changed
+              api.getAdminStats().then(setStats).catch(console.error);
+            }}
           />
         )}
       </AnimatePresence>

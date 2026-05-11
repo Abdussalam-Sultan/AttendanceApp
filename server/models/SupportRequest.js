@@ -26,7 +26,13 @@ const SupportRequest = sequelize.define('SupportRequest', {
   status: {
     type: DataTypes.STRING, // 'pending', 'resolved', 'closed'
     defaultValue: 'pending',
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
+}, {
+  indexes: [{ fields: ['companyId'] }]
 });
 
 export default SupportRequest;

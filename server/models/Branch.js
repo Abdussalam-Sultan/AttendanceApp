@@ -10,14 +10,12 @@ const Branch = sequelize.define('Branch', {
   name: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
   },
   location: {
     type: DataTypes.STRING,
   },
   code: {
     type: DataTypes.STRING,
-    unique: true,
   },
   latitude: {
     type: DataTypes.FLOAT,
@@ -30,7 +28,17 @@ const Branch = sequelize.define('Branch', {
   managerId: {
     type: DataTypes.UUID,
     allowNull: true,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
+}, {
+  indexes: [
+    { fields: ['companyId'] },
+    { fields: ['code', 'companyId'], unique: true }, 
+    { fields: ['name', 'companyId'], unique: true }
+  ]
 });
 
 export default Branch;

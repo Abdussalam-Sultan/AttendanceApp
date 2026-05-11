@@ -17,6 +17,7 @@ router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {
     }
 
     const branches = await Branch.findAll({
+      where: { companyId: req.companyId },
       include: [{ 
         model: User,
         attributes: ['id', 'leaveBalance']
@@ -28,6 +29,7 @@ router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {
     const [allAttendance, allApprovedLeaves] = await Promise.all([
       Attendance.findAll({
         where: { 
+          companyId: req.companyId,
           userId: { [Op.in]: allUserIds },
           ...attendanceDateFilter
         },
@@ -35,6 +37,7 @@ router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {
       }),
       LeaveRequest.findAll({
         where: { 
+          companyId: req.companyId,
           userId: { [Op.in]: allUserIds },
           status: 'Approved',
           [Op.or]: [
@@ -123,6 +126,7 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
     }
 
     const departments = await Department.findAll({
+      where: { companyId: req.companyId },
       include: [{ 
         model: User,
         attributes: ['id', 'leaveBalance', 'name', 'role']
@@ -134,6 +138,7 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
     const [allAttendance, allApprovedLeaves] = await Promise.all([
       Attendance.findAll({
         where: { 
+          companyId: req.companyId,
           userId: { [Op.in]: allUserIds },
           ...attendanceDateFilter
         },
@@ -141,6 +146,7 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
       }),
       LeaveRequest.findAll({
         where: { 
+          companyId: req.companyId,
           userId: { [Op.in]: allUserIds },
           status: 'Approved',
           [Op.or]: [
@@ -223,6 +229,7 @@ router.get('/department-stats', authenticate, isAdmin, async (req, res) => {
 router.get('/branches', authenticate, isAdmin, async (req, res) => {
   try {
     const branches = await Branch.findAll({
+      where: { companyId: req.companyId },
       include: [{ model: User, attributes: ['id', 'name', 'role'] }]
     });
     res.send(branches);
@@ -234,7 +241,7 @@ router.get('/branches', authenticate, isAdmin, async (req, res) => {
 // Create a branch
 router.post('/branches', authenticate, isAdmin, async (req, res) => {
   try {
-    const branch = await Branch.create(req.body);
+    const branch = await Branch.create({ ...req.body, companyId: req.companyId });
     res.status(201).send(branch);
   } catch (error) {
     res.status(400).send(error);
@@ -244,7 +251,7 @@ router.post('/branches', authenticate, isAdmin, async (req, res) => {
 // Delete a branch
 router.delete('/branches/:id', authenticate, isAdmin, async (req, res) => {
   try {
-    const branch = await Branch.findByPk(req.params.id);
+    const branch = await Branch.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!branch) return res.status(404).send({ error: 'Branch not found' });
     await branch.destroy();
     res.send({ message: 'Branch deleted' });
@@ -256,7 +263,7 @@ router.delete('/branches/:id', authenticate, isAdmin, async (req, res) => {
 // Update a branch
 router.patch('/branches/:id', authenticate, isAdmin, async (req, res) => {
   try {
-    const branch = await Branch.findByPk(req.params.id);
+    const branch = await Branch.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!branch) return res.status(404).send({ error: 'Branch not found' });
     await branch.update(req.body);
     res.send(branch);
@@ -269,6 +276,7 @@ router.patch('/branches/:id', authenticate, isAdmin, async (req, res) => {
 router.get('/departments', authenticate, async (req, res) => {
   try {
     const departments = await Department.findAll({
+      where: { companyId: req.companyId },
       include: [{ model: User, attributes: ['id', 'name', 'role'] }]
     });
     res.send(departments);
@@ -280,7 +288,7 @@ router.get('/departments', authenticate, async (req, res) => {
 // Create a department
 router.post('/departments', authenticate, isAdmin, async (req, res) => {
   try {
-    const department = await Department.create(req.body);
+    const department = await Department.create({ ...req.body, companyId: req.companyId });
     res.status(201).send(department);
   } catch (error) {
     res.status(400).send(error);
@@ -290,7 +298,7 @@ router.post('/departments', authenticate, isAdmin, async (req, res) => {
 // Delete a department
 router.delete('/departments/:id', authenticate, isAdmin, async (req, res) => {
   try {
-    const department = await Department.findByPk(req.params.id);
+    const department = await Department.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!department) return res.status(404).send({ error: 'Department not found' });
     await department.destroy();
     res.send({ message: 'Department deleted' });
@@ -302,7 +310,7 @@ router.delete('/departments/:id', authenticate, isAdmin, async (req, res) => {
 // Update a department
 router.patch('/departments/:id', authenticate, isAdmin, async (req, res) => {
   try {
-    const department = await Department.findByPk(req.params.id);
+    const department = await Department.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!department) return res.status(404).send({ error: 'Department not found' });
     await department.update(req.body);
     res.send(department);
@@ -320,7 +328,7 @@ router.get('/users', authenticate, (req, res, next) => {
   }
 }, async (req, res) => {
   try {
-    const where = {};
+    const where = { companyId: req.companyId };
     if (req.user.role === 'Manager') {
       where.role = { [Op.ne]: 'Admin' };
       if (req.user.branchId) {
@@ -357,6 +365,7 @@ router.post('/users', authenticate, isManager, async (req, res) => {
       password: password || 'Welcome123!', // Default password
       name,
       role: role || 'Employee',
+      companyId: req.companyId,
       branchId: branchId || (req.user.role === 'Manager' ? req.user.branchId : null),
       department: department || 'General',
       departmentId,
@@ -374,7 +383,7 @@ router.post('/users', authenticate, isManager, async (req, res) => {
 // Update user details (role, branch, details) - ADMIN or MANAGER
 router.patch('/users/:id', authenticate, isManager, async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!user) return res.status(404).send({ error: 'User not found' });
 
     // Prevent Managers from interacting with Admins
@@ -384,7 +393,7 @@ router.patch('/users/:id', authenticate, isManager, async (req, res) => {
 
     // Last admin protection
     if (req.body.role && user.role === 'Admin' && req.body.role !== 'Admin') {
-      const adminCount = await User.count({ where: { role: 'Admin' } });
+      const adminCount = await User.count({ where: { role: 'Admin', companyId: req.companyId } });
       if (adminCount <= 1) {
         return res.status(400).send({ error: 'Cannot demote the last administrator. There must be at least one Admin.' });
       }
@@ -434,7 +443,7 @@ router.patch('/users/:id', authenticate, isManager, async (req, res) => {
 // Delete user - Admin or Manager (of branch)
 router.delete('/users/:id', authenticate, isManager, async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findOne({ where: { id: req.params.id, companyId: req.companyId } });
     if (!user) return res.status(404).send({ error: 'User not found' });
 
     // Prevent Managers from interacting with Admins
@@ -444,7 +453,7 @@ router.delete('/users/:id', authenticate, isManager, async (req, res) => {
 
     // Last admin protection
     if (user.role === 'Admin') {
-      const adminCount = await User.count({ where: { role: 'Admin' } });
+      const adminCount = await User.count({ where: { role: 'Admin', companyId: req.companyId } });
       if (adminCount <= 1) {
         return res.status(400).send({ error: 'Cannot delete the last administrator. There must be at least one Admin.' });
       }
@@ -472,7 +481,7 @@ router.post('/users/bulk-update', authenticate, isManager, async (req, res) => {
 
     // Identify users to update
     const usersToUpdate = await User.findAll({
-      where: { id: { [Op.in]: userIds } }
+      where: { id: { [Op.in]: userIds }, companyId: req.companyId }
     });
 
     if (usersToUpdate.length === 0) {
@@ -534,17 +543,17 @@ router.post('/prune', authenticate, isAdmin, async (req, res) => {
     
     if (collections.includes('announcements')) {
       results.announcements = await Announcement.destroy({
-        where: { createdAt: { [Op.lt]: dateLimit } }
+        where: { createdAt: { [Op.lt]: dateLimit }, companyId: req.companyId }
       });
     }
     if (collections.includes('leaves')) {
       results.leaves = await LeaveRequest.destroy({
-        where: { createdAt: { [Op.lt]: dateLimit } }
+        where: { createdAt: { [Op.lt]: dateLimit }, companyId: req.companyId }
       });
     }
     if (collections.includes('attendance')) {
       results.attendance = await Attendance.destroy({
-        where: { createdAt: { [Op.lt]: dateLimit } }
+        where: { createdAt: { [Op.lt]: dateLimit }, companyId: req.companyId }
       });
     }
 

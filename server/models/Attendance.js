@@ -39,7 +39,32 @@ const Attendance = sequelize.define('Attendance', {
   lateMinutes: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
+  },
+  latitude: {
+    type: DataTypes.FLOAT,
+  },
+  longitude: {
+    type: DataTypes.FLOAT,
+  },
+  address: {
+    type: DataTypes.TEXT,
+  },
+  branchName: {
+    type: DataTypes.STRING,
+  },
+  departmentName: {
+    type: DataTypes.STRING,
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
   }
+}, {
+  indexes: [
+    { fields: ['companyId'] },
+    { fields: ['userId'] },
+    { fields: ['date'] }
+  ]
 });
 
 export default Attendance;

@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Clock, MapPin, Building2, User, Calendar, ShieldCheck, AlertCircle, ArrowRight, Download } from 'lucide-react';
+import { X, Clock, MapPin, Building2, User, Calendar, ShieldCheck, AlertCircle, ArrowRight, Download, Edit2, Save, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
+import { api } from '../services/api';
+import { useToast } from './ToastProvider';
 
 interface AttendanceDetailModalProps {
   record: any;
   isOpen: boolean;
   onClose: () => void;
+  onUpdate?: (updatedRecord: any) => void;
+  currentUser?: any;
 }
 
 const DefaultIcon = L.icon({
@@ -18,12 +22,33 @@ const DefaultIcon = L.icon({
   iconAnchor: [12, 41]
 });
 
-export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { currentUser?: any }> = ({ record, isOpen, onClose, currentUser }) => {
+export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps> = ({ record, isOpen, onClose, onUpdate, currentUser }) => {
+  const { toast, confirm } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (record) {
+      setEditData({
+        status: record.status,
+        checkIn: record.checkIn,
+        checkOut: record.checkOut || '--:--',
+        date: record.date
+      });
+    }
+    setIsEditing(false);
+  }, [record, isOpen]);
+
   if (!record) return null;
+
+  const isAdminOrManager = currentUser?.role === 'Admin' || currentUser?.role === 'Manager';
+  const canEdit = isAdminOrManager && (currentUser?.role === 'Admin' || record.User?.role !== 'Admin');
 
   // Robust user data resolution from multiple potential sources
   const resolvedUser = record.User || record.user || (record.userId === currentUser?.id ? currentUser : null);
   const user = {
+    id: resolvedUser?.id,
     name: resolvedUser?.name || record.userName || 'Unknown Employee',
     employeeId: resolvedUser?.employeeId || record.employeeId || 'N/A',
     role: resolvedUser?.role || 'Staff',
@@ -38,6 +63,24 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
     absent: 'bg-red-500',
     leave: 'bg-indigo-500'
   } as any;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updatedRecord = await api.updateAttendanceRecord(record.id, editData);
+      toast("Attendance record updated successfully", "success");
+      setIsEditing(false);
+      if (onUpdate) onUpdate(updatedRecord);
+    } catch (error: any) {
+      toast(error.message || "Failed to update record", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatusChange = (status: string) => {
+    setEditData({ ...editData, status });
+  };
 
   return (
     <AnimatePresence>
@@ -60,7 +103,7 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
             {/* Header */}
             <div className="px-8 py-6 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl ${statusColors[record.status] || 'bg-slate-500'} flex items-center justify-center text-white shadow-lg shadow-current/20`}>
+                <div className={`w-12 h-12 rounded-2xl ${statusColors[editData?.status || record.status] || 'bg-slate-500'} flex items-center justify-center text-white shadow-lg shadow-current/20`}>
                   <Clock className="w-6 h-6" />
                 </div>
                 <div>
@@ -68,12 +111,23 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Digital Log Entry #{record.id.toString().slice(-6)}</p>
                 </div>
               </div>
-              <button 
-                onClick={onClose}
-                className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl active:scale-90 transition-transform"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {canEdit && !isEditing && (
+                  <button 
+                    onClick={() => setIsEditing(true)}
+                    className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-2xl active:scale-90 transition-all"
+                    title="Edit Record"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                )}
+                <button 
+                  onClick={onClose}
+                  className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl active:scale-90 transition-transform"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Content */}
@@ -105,7 +159,16 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
                     <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-500">
                       <ArrowRight className="w-5 h-5" />
                     </div>
-                    <p className="text-2xl font-black text-slate-900 dark:text-white font-mono leading-none">{record.checkIn}</p>
+                    {isEditing ? (
+                      <input 
+                        type="text"
+                        value={editData.checkIn}
+                        onChange={(e) => setEditData({...editData, checkIn: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg p-1 text-lg font-black font-mono focus:ring-1 focus:ring-indigo-500"
+                      />
+                    ) : (
+                      <p className="text-2xl font-black text-slate-900 dark:text-white font-mono leading-none">{record.checkIn}</p>
+                    )}
                   </div>
                 </div>
                 <div className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800">
@@ -114,7 +177,16 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
                     <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-500">
                       <ArrowRight className="w-5 h-5 rotate-180" />
                     </div>
-                    <p className="text-2xl font-black text-slate-900 dark:text-white font-mono leading-none">{record.checkOut || '--:--'}</p>
+                    {isEditing ? (
+                      <input 
+                        type="text"
+                        value={editData.checkOut}
+                        onChange={(e) => setEditData({...editData, checkOut: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg p-1 text-lg font-black font-mono focus:ring-1 focus:ring-indigo-500"
+                      />
+                    ) : (
+                      <p className="text-2xl font-black text-slate-900 dark:text-white font-mono leading-none">{record.checkOut || '--:--'}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -125,21 +197,48 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Verification Date</p>
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-slate-400" />
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{record.date}</p>
+                    {isEditing ? (
+                      <input 
+                        type="text" 
+                        value={editData.date}
+                        onChange={(e) => setEditData({...editData, date: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg p-1 text-xs font-bold focus:ring-1 focus:ring-indigo-500"
+                      />
+                    ) : (
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{record.date}</p>
+                    )}
                   </div>
                 </div>
                 <div className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Record Status</p>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${statusColors[record.status] || 'bg-slate-400'}`} />
-                    <p className={`text-xs font-black uppercase tracking-widest ${
-                      record.status === 'late' ? 'text-amber-500' : 
-                      record.status === 'absent' ? 'text-red-500' : 
-                      record.status === 'leave' ? 'text-indigo-500' : 'text-emerald-500'
-                    }`}>
-                      {record.status}
-                    </p>
-                  </div>
+                  {isEditing ? (
+                    <div className="flex flex-wrap gap-1">
+                      {['present', 'late', 'absent', 'leave'].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => handleStatusChange(s)}
+                          className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all ${
+                            editData.status === s 
+                              ? 'bg-indigo-600 text-white' 
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${statusColors[record.status] || 'bg-slate-400'}`} />
+                      <p className={`text-xs font-black uppercase tracking-widest ${
+                        record.status === 'late' ? 'text-amber-500' : 
+                        record.status === 'absent' ? 'text-red-500' : 
+                        record.status === 'leave' ? 'text-indigo-500' : 'text-emerald-500'
+                      }`}>
+                        {record.status}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -213,12 +312,30 @@ export const AttendanceDetailModal: React.FC<AttendanceDetailModalProps & { curr
 
             {/* Footer Actions */}
             <div className="p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex gap-4">
-              <button 
-                onClick={onClose}
-                className="flex-1 py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-[24px] text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-slate-100 dark:shadow-none"
-              >
-                Dismiss Entry
-              </button>
+              {isEditing ? (
+                <>
+                  <button 
+                    onClick={() => setIsEditing(false)}
+                    className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-[24px] text-xs font-black uppercase tracking-widest active:scale-95 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex-1 py-4 bg-indigo-600 text-white rounded-[24px] text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {saving ? 'Saving...' : <><Save className="w-4 h-4" /> Save Changes</>}
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={onClose}
+                  className="flex-1 py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-[24px] text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-slate-100 dark:shadow-none"
+                >
+                  Dismiss Entry
+                </button>
+              )}
             </div>
           </motion.div>
         </>

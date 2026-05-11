@@ -262,6 +262,19 @@ export const api = {
     if (!res.ok) throw new Error('Failed to fetch all records');
     return await res.json();
   },
+
+  async updateAttendanceRecord(id: string | number, updates: any) {
+    const res = await fetch(`/api/attendance/records/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(updates)
+    });
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Failed to update attendance record');
+    }
+    return await res.json();
+  },
   
   async getAdminLeaveRequests(includeArchived = false) {
     const res = await fetch(`/api/leave/admin/all?includeArchived=${includeArchived}`, {
@@ -462,6 +475,19 @@ export const api = {
     return await res.json();
   },
 
+  async bulkUpdateLeaves(ids: (number | string)[], status: 'Approved' | 'Rejected') {
+    const res = await fetch('/api/leave/bulk-update', {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ ids, status })
+    });
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Failed to update leave requests');
+    }
+    return await res.json();
+  },
+
   async archiveLeaveRequest(id: string | number, archived = true) {
     const res = await fetch(`/api/leave/archive/${id}`, {
       method: 'PATCH',
@@ -602,6 +628,7 @@ export const api = {
     }
 
     const { user, token } = await res.json();
+    storage.clearUserSession();
     storage.save(storage.KEYS.USER, user);
     storage.save(storage.KEYS.AUTH_TOKEN, token);
     return user;
@@ -619,6 +646,7 @@ export const api = {
     }
 
     const { user, token } = await res.json();
+    storage.clearUserSession();
     storage.save(storage.KEYS.USER, user);
     storage.save(storage.KEYS.AUTH_TOKEN, token);
     return user;

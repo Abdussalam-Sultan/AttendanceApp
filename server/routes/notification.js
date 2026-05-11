@@ -8,13 +8,23 @@ const router = express.Router();
 // Get all notifications for the current user (including broadcasts)
 router.get('/', authenticate, async (req, res) => {
   try {
+    const where = {
+      companyId: req.companyId,
+      [Op.or]: [
+        { userId: req.user.id },
+        { userId: null } // Broadcasts in this company
+      ]
+    };
+
+    // Only show notifications created after the user registered (for non-admins)
+    if (req.user.role !== 'Admin' && req.user.createdAt) {
+      where.createdAt = {
+        [Op.gte]: req.user.createdAt
+      };
+    }
+
     const notifications = await Notification.findAll({
-      where: {
-        [Op.or]: [
-          { userId: req.user.id },
-          { userId: null } // Broadcasts
-        ]
-      },
+      where,
       order: [['createdAt', 'DESC']],
       limit: 20
     });
@@ -30,6 +40,7 @@ router.patch('/:id/read', authenticate, async (req, res) => {
     const notification = await Notification.findOne({
       where: {
         id: req.params.id,
+        companyId: req.companyId,
         [Op.or]: [
           { userId: req.user.id },
           { userId: null }
@@ -56,6 +67,7 @@ router.patch('/read-all', authenticate, async (req, res) => {
       { isRead: true },
       {
         where: {
+          companyId: req.companyId,
           [Op.or]: [
             { userId: req.user.id },
             { userId: null }

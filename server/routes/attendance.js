@@ -75,9 +75,9 @@ const ampmToMinutes = (timeStr) => {
 
 router.get('/settings', authenticate, async (req, res) => {
   try {
-    let settings = await SystemSettings.findOne();
+    let settings = await SystemSettings.findOne({ where: { companyId: req.companyId } });
     if (!settings) {
-      settings = await SystemSettings.create({});
+      settings = await SystemSettings.create({ companyId: req.companyId });
     }
     res.send(settings);
   } catch (error) {
@@ -87,16 +87,17 @@ router.get('/settings', authenticate, async (req, res) => {
 
 router.patch('/settings', authenticate, isManager, async (req, res) => {
   try {
-    let settings = await SystemSettings.findOne();
+    let settings = await SystemSettings.findOne({ where: { companyId: req.companyId } });
     if (!settings) {
-      settings = await SystemSettings.create(req.body);
+      settings = await SystemSettings.create({ ...req.body, companyId: req.companyId });
     } else {
       await settings.update(req.body);
     }
 
-    // Broadcast notification about policy change
+    // Broadcast notification about policy change within the company
     await Notification.create({
       userId: null, // Broadcast
+      companyId: req.companyId,
       title: 'Policy Update',
       content: 'Attendance policies (working hours or grace periods) have been updated by admin.',
       type: 'POLICY_CHANGE'
@@ -110,7 +111,7 @@ router.patch('/settings', authenticate, isManager, async (req, res) => {
 
 router.get('/admin/all-stats', authenticate, isManager, async (req, res) => {
   try {
-    const userWhereClause = {};
+    const userWhereClause = { companyId: req.companyId };
     if (req.user.role === 'Manager') {
       userWhereClause.role = { [Op.ne]: 'Admin' };
       if (req.user.branchId) {
@@ -124,10 +125,11 @@ router.get('/admin/all-stats', authenticate, isManager, async (req, res) => {
           'status',
           [sequelize.fn('COUNT', sequelize.col('Attendance.id')), 'count']
         ],
+        where: { companyId: req.companyId },
         include: [{ 
           model: User, 
           attributes: [],
-          where: req.user.role === 'Manager' ? { branchId: req.user.branchId } : {} 
+          where: userWhereClause
         }],
         group: ['status'],
         raw: true
@@ -162,7 +164,7 @@ router.get('/admin/all-stats', authenticate, isManager, async (req, res) => {
 
 router.get('/admin/all-records', authenticate, isManager, async (req, res) => {
   try {
-    const userWhere = {};
+    const userWhere = { companyId: req.companyId };
     if (req.user.role === 'Manager') {
       userWhere.role = { [Op.ne]: 'Admin' };
       if (req.user.branchId) {
@@ -171,6 +173,7 @@ router.get('/admin/all-records', authenticate, isManager, async (req, res) => {
     }
 
     const records = await Attendance.findAll({
+      where: { companyId: req.companyId },
       include: [{ 
         model: User, 
         attributes: ['name', 'employeeId', 'department', 'branchId', 'role', 'avatar'],
@@ -181,7 +184,7 @@ router.get('/admin/all-records', authenticate, isManager, async (req, res) => {
         ]
       }],
       order: [['createdAt', 'DESC']],
-      limit: 200 // Limit to last 200 records to ensure speed
+      limit: 200 
     });
     res.send(records);
   } catch (error) {
@@ -196,7 +199,9 @@ router.get('/branch-stats', authenticate, async (req, res) => {
       return res.status(404).send({ error: 'User branch not found' });
     }
 
-    const branch = await Branch.findByPk(user.branchId);
+    const branch = await Branch.findOne({ 
+      where: { id: user.branchId, companyId: req.companyId } 
+    });
     
     const [counts, totalEmployees] = await Promise.all([
       Attendance.findAll({
@@ -204,15 +209,16 @@ router.get('/branch-stats', authenticate, async (req, res) => {
           'status',
           [sequelize.fn('COUNT', sequelize.col('Attendance.id')), 'count']
         ],
+        where: { companyId: req.companyId },
         include: [{ 
           model: User, 
           attributes: [],
-          where: { branchId: user.branchId } 
+          where: { branchId: user.branchId, companyId: req.companyId } 
         }],
         group: ['status'],
         raw: true
       }),
-      User.count({ where: { branchId: user.branchId } })
+      User.count({ where: { branchId: user.branchId, companyId: req.companyId } })
     ]);
 
     const stats = {
@@ -241,8 +247,8 @@ router.get('/branch-stats', authenticate, async (req, res) => {
     // For "on leave today", we should check today's date
     const today = formatDate(new Date());
     stats.onLeaveToday = await Attendance.count({
-      where: { date: today, status: 'leave' },
-      include: [{ model: User, where: { branchId: user.branchId } }]
+      where: { date: today, status: 'leave', companyId: req.companyId },
+      include: [{ model: User, where: { branchId: user.branchId, companyId: req.companyId } }]
     });
 
     res.send(stats);
@@ -259,7 +265,7 @@ router.get('/stats', authenticate, async (req, res) => {
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
-      where: { userId: req.user.id },
+      where: { userId: req.user.id, companyId: req.companyId },
       group: ['status'],
       raw: true
     });
@@ -299,7 +305,7 @@ router.get('/stats', authenticate, async (req, res) => {
 router.get('/records', authenticate, async (req, res) => {
   try {
     const records = await Attendance.findAll({
-      where: { userId: req.user.id },
+      where: { userId: req.user.id, companyId: req.companyId },
       include: [{ 
         model: User, 
         attributes: ['name', 'employeeId', 'role', 'avatar'] 
@@ -337,8 +343,8 @@ router.post('/check-in', authenticate, async (req, res) => {
     const tz = timezone || 'UTC';
     const today = formatDate(now, tz);
 
-    let settings = await SystemSettings.findOne();
-    if (!settings) settings = await SystemSettings.create({});
+    let settings = await SystemSettings.findOne({ where: { companyId: req.companyId } });
+    if (!settings) settings = await SystemSettings.create({ companyId: req.companyId });
 
     const user = await User.findByPk(req.user.id, {
       include: [
@@ -346,6 +352,11 @@ router.post('/check-in', authenticate, async (req, res) => {
         { model: Department }
       ]
     });
+    
+    // Check if user belongs to a company and it matches
+    if (user.companyId !== req.companyId) {
+       return res.status(403).send({ error: 'Tenant mismatch. Please re-authenticate.' });
+    }
 
     // Geofencing Check
     if (settings.geofencingEnabled) {
@@ -398,6 +409,7 @@ router.post('/check-in', authenticate, async (req, res) => {
 
     const record = await Attendance.create({
       userId: req.user.id,
+      companyId: req.companyId,
       date: today,
       day: now.toLocaleDateString('en-GB', { weekday: 'long', timeZone: tz }),
       status: status,
@@ -413,6 +425,7 @@ router.post('/check-in', authenticate, async (req, res) => {
     // Create notification for user
     await Notification.create({
       userId: req.user.id,
+      companyId: req.companyId,
       title: status === 'late' ? 'Late Check-in' : 'Checked In',
       content: status === 'late' 
         ? `You checked in late at ${timeStr}. Delay: ${lateMinutes} mins.` 
@@ -436,7 +449,12 @@ router.post('/check-out', authenticate, async (req, res) => {
     const today = formatDate(now, tz);
 
     const attendance = await Attendance.findOne({
-      where: { userId: req.user.id, checkOut: '--:--' },
+      where: { 
+        userId: req.user.id, 
+        companyId: req.companyId,
+        checkOut: '--:--',
+        status: { [Op.or]: ['present', 'late'] }
+      },
       order: [['createdAt', 'DESC']]
     });
 
@@ -444,8 +462,8 @@ router.post('/check-out', authenticate, async (req, res) => {
       return res.status(404).send({ error: 'No active check-in found for today' });
     }
 
-    let settings = await SystemSettings.findOne();
-    if (!settings) settings = await SystemSettings.create({});
+    let settings = await SystemSettings.findOne({ where: { companyId: req.companyId } });
+    if (!settings) settings = await SystemSettings.create({ companyId: req.companyId });
 
     const departureMinutes = timeToMinutes(time24Str);
     const endMinutes = timeToMinutes(settings.workEndTime);
@@ -466,12 +484,57 @@ router.post('/check-out', authenticate, async (req, res) => {
     // Create notification for user
     await Notification.create({
       userId: req.user.id,
+      companyId: req.companyId,
       title: 'Checked Out',
       content: `Successfully checked out at ${timeStr}. Status: ${checkOutStatus}. Total worked: ${Math.floor(attendance.workedMinutes / 60)}h ${attendance.workedMinutes % 60}m.`,
       type: 'ATTENDANCE_STATUS'
     });
 
     res.send(attendance);
+  } catch (error) {
+    res.status(400).send(error);
+  }
+});
+
+router.patch('/records/:id', authenticate, isManager, async (req, res) => {
+  try {
+    const record = await Attendance.findOne({
+      where: { id: req.params.id, companyId: req.companyId }
+    });
+    if (!record) return res.status(404).send({ error: 'Record not found' });
+
+    // Protect admin records from non-admin managers
+    if (req.user.role === 'Manager') {
+      const user = await User.findOne({ where: { id: record.userId, companyId: req.companyId } });
+      if (user && user.role === 'Admin') {
+        return res.status(403).send({ error: 'Managers cannot edit administrator records.' });
+      }
+      if (user && user.branchId !== req.user.branchId) {
+        return res.status(403).send({ error: 'Managers can only edit records for employees in their branch.' });
+      }
+    }
+
+    const updates = Object.keys(req.body);
+    const allowedUpdates = ['status', 'checkIn', 'checkOut', 'date', 'lateMinutes', 'checkOutStatus', 'workedMinutes'];
+    const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
+
+    if (!isValidOperation) {
+      return res.status(400).send({ error: 'Invalid updates!' });
+    }
+
+    updates.forEach((update) => (record[update] = req.body[update]));
+    await record.save();
+
+    // Create notification for user about manual correction
+    await Notification.create({
+      userId: record.userId,
+      companyId: req.companyId,
+      title: 'Attendance Corrected',
+      content: `An administrator has manually updated your attendance record for ${record.date}.`,
+      type: 'ATTENDANCE_STATUS'
+    });
+
+    res.send(record);
   } catch (error) {
     res.status(400).send(error);
   }

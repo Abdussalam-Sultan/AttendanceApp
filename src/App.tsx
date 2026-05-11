@@ -42,7 +42,7 @@ function AppContent() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(!!storage.get(storage.KEYS.AUTH_TOKEN));
   const [user, setUser] = useState<any>(storage.get(storage.KEYS.USER));
-  const [onboardingComplete, setOnboardingComplete] = useState(!!storage.get(storage.KEYS.ONBOARDING_COMPLETE));
+  const [onboardingComplete, setOnboardingComplete] = useState(!!storage.get(storage.KEYS.ONBOARDING_COMPLETE) || user?.onboardingCompleted);
   const [theme, setTheme] = useState<'light' | 'dark'>(storage.get(storage.KEYS.THEME) || 'light');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -110,8 +110,14 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [activeTab, attendanceTab]);
 
-  const isCheckedIn = todayRecord && (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
-  const isDayCompleted = todayRecord && (todayRecord.checkOut !== '--:--' && !!todayRecord.checkOut);
+  const isCheckedIn = todayRecord && 
+    (todayRecord.status === 'present' || todayRecord.status === 'late') && 
+    (todayRecord.checkOut === '--:--' || !todayRecord.checkOut);
+    
+  const isDayCompleted = todayRecord && 
+    (todayRecord.status === 'present' || todayRecord.status === 'late' || todayRecord.status === 'absent' || todayRecord.status === 'leave') && 
+    todayRecord.checkOut !== '--:--' && 
+    !!todayRecord.checkOut;
 
   const refreshAttendance = async (force = false) => {
     if (!isLoggedIn && !force) return;
@@ -271,6 +277,10 @@ function AppContent() {
         try {
           const userData = await api.getUser();
           setUser(userData);
+          if (userData.onboardingCompleted) {
+            setOnboardingComplete(true);
+            storage.save(storage.KEYS.ONBOARDING_COMPLETE, true);
+          }
           if (userData.role === 'Admin' || userData.role === 'Manager') {
             const count = await api.getPendingLeavesCount();
             setPendingLeavesCount(count);
@@ -310,7 +320,9 @@ function AppContent() {
     };
   }, []);
 
-  const handleOnboardingComplete = () => {
+  const handleOnboardingComplete = (updatedUser: any) => {
+    setUser(updatedUser);
+    storage.save(storage.KEYS.USER, updatedUser);
     storage.save(storage.KEYS.ONBOARDING_COMPLETE, true);
     setOnboardingComplete(true);
   };
@@ -318,6 +330,12 @@ function AppContent() {
   const handleLoginSuccess = (user: any) => {
     setUser(user);
     setIsLoggedIn(true);
+    setOnboardingComplete(!!user.onboardingCompleted);
+    if (user.onboardingCompleted) {
+      storage.save(storage.KEYS.ONBOARDING_COMPLETE, true);
+    } else {
+      storage.save(storage.KEYS.ONBOARDING_COMPLETE, false);
+    }
     setActiveTab('home');
     refreshAttendance(true);
     refreshNotifications();
@@ -333,12 +351,12 @@ function AppContent() {
   };
 
   const renderView = () => {
-    if (!onboardingComplete) {
-      return <OnboardingView onComplete={handleOnboardingComplete} />;
-    }
-
     if (!isLoggedIn) {
       return <LoginView onSuccess={handleLoginSuccess} />;
+    }
+
+    if (!onboardingComplete && user && !user.onboardingCompleted) {
+      return <OnboardingView user={user} onComplete={handleOnboardingComplete} />;
     }
 
     switch (activeTab) {

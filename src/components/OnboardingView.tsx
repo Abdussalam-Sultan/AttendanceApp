@@ -1,76 +1,100 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  ShieldCheck, Scan, Calendar, ArrowRight, Check, Bell, 
-  MapPin, Globe, Layout, BarChart3, Smartphone, Laptop, 
-  User, Users, Briefcase, Camera, ChevronRight
+  ShieldCheck, Scan, ArrowRight, Check, Bell, 
+  MapPin, Smartphone, User, Briefcase, Camera, 
+  ChevronRight, Mail, Phone, Home, Calendar,
+  Shield, Lock, Fingerprint
 } from 'lucide-react';
 import { Logo } from './Logo';
+import { api } from '../services/api';
 
 interface OnboardingViewProps {
-  onComplete: () => void;
+  user: any;
+  onComplete: (updatedUser: any) => void;
 }
 
 type OnboardingStep = 
   | 'welcome' 
-  | 'feature_checkin' 
-  | 'feature_stats' 
-  | 'feature_insights' 
-  | 'feature_notif' 
-  | 'feature_global' 
-  | 'feature_secure' 
-  | 'role_selection' 
-  | 'permissions' 
+  | 'profile_setup' 
+  | 'notifications' 
+  | 'security' 
   | 'success';
 
-const steps: OnboardingStep[] = [
-  'welcome',
-  'feature_checkin',
-  'feature_stats',
-  'feature_insights',
-  'feature_notif',
-  'feature_global',
-  'feature_secure',
-  'role_selection',
-  'permissions',
-  'success'
-];
-
-export const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) => {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [role, setRole] = useState<'individual' | 'member' | 'admin' | null>(null);
-  const [permissions, setPermissions] = useState({
-    location: false,
-    camera: false,
-    notifications: false
+export const OnboardingView: React.FC<OnboardingViewProps> = ({ user, onComplete }) => {
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    address: user?.address || '',
+    emergencyContact: user?.emergencyContact || '',
+    birthDate: user?.birthDate || '',
+    notifSettings: user?.notifSettings || {
+      attendance: true,
+      leave: true,
+      announcements: true,
+      reminders: true
+    },
+    securitySettings: user?.securitySettings || {
+      deviceBinding: true
+    }
   });
 
-  const nextStep = () => {
-    if (currentStepIndex < steps.length - 1) {
-      setCurrentStepIndex(prev => prev + 1);
-    } else {
-      onComplete();
+  const updateFormData = (updates: any) => {
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
+
+  const handleNext = async () => {
+    if (currentStep === 'welcome') {
+      setCurrentStep('profile_setup');
+    } else if (currentStep === 'profile_setup') {
+      setCurrentStep('notifications');
+    } else if (currentStep === 'notifications') {
+      if (user?.role === 'Admin') {
+        setCurrentStep('security');
+      } else {
+        await finishOnboarding();
+      }
+    } else if (currentStep === 'security') {
+      await finishOnboarding();
     }
   };
 
-  const currentStep = steps[currentStepIndex];
+  const finishOnboarding = async () => {
+    setLoading(true);
+    try {
+      const updatedUser = await api.updateProfile({
+        ...formData,
+        onboardingCompleted: true
+      });
+      setCurrentStep('success');
+      setTimeout(() => {
+        onComplete(updatedUser);
+      }, 2000);
+    } catch (error) {
+      console.error("Onboarding setup failed", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const renderWelcome = () => (
-    <div className="flex flex-col items-center justify-center h-full px-8 text-center">
+    <div className="flex flex-col items-center justify-center h-full px-8 text-center pt-20">
       <motion.div 
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="mb-10"
       >
-        <Logo size={120} className="drop-shadow-2xl" />
+        <Logo size={100} className="drop-shadow-2xl" />
       </motion.div>
       <motion.h1 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="text-4xl font-black text-slate-900 dark:text-white leading-tight mb-4"
+        className="text-3xl font-black text-slate-900 dark:text-white leading-tight mb-4"
       >
-        Smarter Attendance <span className="text-indigo-600">for Every Workplace</span>
+        Welcome to the Team, <br/><span className="text-indigo-600">{user?.name}!</span>
       </motion.h1>
       <motion.p 
         initial={{ y: 20, opacity: 0 }}
@@ -78,204 +102,255 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) =>
         transition={{ delay: 0.3 }}
         className="text-sm font-medium text-slate-400 mb-12 max-w-[280px]"
       >
-        Modern. Reliable. Effortless. Built for every place that matters.
+        We're excited to have you. Let's get your workspace ready in just a few steps.
       </motion.p>
       <motion.button 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        onClick={nextStep}
-        className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-sm uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
+        whileTap={{ scale: 0.95 }}
+        onClick={handleNext}
+        className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-sm uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none transition-all flex items-center justify-center gap-2"
       >
-        Get Started
-      </motion.button>
-      <motion.button 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
-        onClick={onComplete}
-        className="mt-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-      >
-        Already have an account? Log In
+        Start Setup <ArrowRight className="w-4 h-4" />
       </motion.button>
     </div>
   );
 
-  const renderFeature = (title: string, sub: string, desc: string, icon: any, color: string, bg: string) => (
-    <div className="flex flex-col items-center justify-center h-full px-8 text-center pt-10">
-      <motion.div 
-        initial={{ scale: 0.5, rotate: -15, opacity: 0 }}
-        animate={{ scale: 1, rotate: 0, opacity: 1 }}
-        className={`w-40 h-40 mb-12 rounded-[48px] ${bg} flex items-center justify-center relative`}
-      >
-        <div className={`absolute inset-0 ${bg} rounded-[48px] blur-2xl opacity-30`}></div>
-        {React.createElement(icon, { className: `w-16 h-16 ${color}` })}
-        {/* Animated accent dots */}
-        <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 3 }} className={`absolute -top-4 -right-4 w-8 h-8 rounded-full ${bg} opacity-50`} />
-        <motion.div animate={{ y: [0, 10, 0] }} transition={{ repeat: Infinity, duration: 4, delay: 0.5 }} className={`absolute -bottom-2 -left-6 w-6 h-6 rounded-full ${bg} opacity-30`} />
-      </motion.div>
-      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }}>
-        <h2 className="text-[13px] font-bold text-indigo-600 uppercase tracking-[0.3em] mb-2">{title}</h2>
-        <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight mb-4">{sub}</h3>
-        <p className="text-sm font-medium text-slate-400 leading-relaxed max-w-[260px] mx-auto italic">
-          {desc}
-        </p>
-      </motion.div>
-    </div>
-  );
-
-  const renderRoleSelection = () => (
-    <div className="flex flex-col h-full px-8 pt-16">
-      <div className="text-center mb-10">
-        <h2 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-2">Tell Us</h2>
-        <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">About You</h3>
+  const renderProfileSetup = () => (
+    <div className="flex flex-col h-full px-8 pt-10">
+      <div className="mb-8">
+        <h2 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-2">Step 1</h2>
+        <h3 className="text-2xl font-black text-slate-900 dark:text-white">Profile Setup</h3>
+        <p className="text-xs font-medium text-slate-400 mt-1">Make sure your contact information is correct.</p>
       </div>
+
+      <div className="space-y-4 max-h-[50vh] overflow-y-auto no-scrollbar pr-1">
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-4">Full Name</label>
+          <div className="relative">
+            <User className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              value={formData.name}
+              onChange={(e) => updateFormData({ name: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-medium text-slate-900 dark:text-white focus:ring-2 ring-indigo-500/20 transition-all outline-none"
+              placeholder="Your full name"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-4">Phone Number</label>
+          <div className="relative">
+            <Phone className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="tel" 
+              value={formData.phone}
+              onChange={(e) => updateFormData({ phone: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-medium text-slate-900 dark:text-white focus:ring-2 ring-indigo-500/20 transition-all outline-none"
+              placeholder="+1 (555) 000-0000"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-4">Address</label>
+          <div className="relative">
+            <Home className="absolute left-5 top-4 w-4 h-4 text-slate-400" />
+            <textarea 
+              value={formData.address}
+              onChange={(e) => updateFormData({ address: e.target.value })}
+              rows={2}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-medium text-slate-900 dark:text-white focus:ring-2 ring-indigo-500/20 transition-all outline-none resize-none"
+              placeholder="Home or office address"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-4">Emergency Contact</label>
+          <div className="relative">
+            <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              value={formData.emergencyContact}
+              onChange={(e) => updateFormData({ emergencyContact: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-medium text-slate-900 dark:text-white focus:ring-2 ring-indigo-500/20 transition-all outline-none"
+              placeholder="Name and phone"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-auto pt-6 pb-10">
+        <button 
+          onClick={handleNext}
+          disabled={!formData.name}
+          className="w-full bg-indigo-600 disabled:opacity-50 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderNotifications = () => (
+    <div className="flex flex-col h-full px-8 pt-10">
+      <div className="mb-8">
+        <h2 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-2">Step 2</h2>
+        <h3 className="text-2xl font-black text-slate-900 dark:text-white">Notifications</h3>
+        <p className="text-xs font-medium text-slate-400 mt-1">Control how you want to be notified.</p>
+      </div>
+
       <div className="space-y-4">
         {[
-          { id: 'individual', title: 'Individual', sub: 'Tracking my own attendance', icon: User, color: 'text-indigo-500' },
-          { id: 'member', title: 'Team Member', sub: 'Part of an organization', icon: Users, color: 'text-emerald-500' },
-          { id: 'admin', title: 'Administrator', sub: 'Managing a team or organization', icon: ShieldCheck, color: 'text-rose-500' }
+          { id: 'attendance', title: 'Attendance Alerts', desc: 'Confirmations for check-ins and check-outs', icon: Scan },
+          { id: 'leave', title: 'Leave Updates', desc: 'Status updates for your leave requests', icon: Briefcase },
+          { id: 'announcements', title: 'Company News', desc: 'Stay updated with site-wide announcements', icon: Bell },
+          { id: 'reminders', title: 'Daily Reminders', desc: 'Helpful nudges for your shifts', icon: Calendar }
         ].map((item) => (
-          <motion.button
+          <div 
             key={item.id}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setRole(item.id as any)}
-            className={`w-full p-6 rounded-[32px] border text-left flex items-center gap-5 transition-all ${
-              role === item.id 
-                ? 'bg-white dark:bg-slate-900 border-indigo-600 shadow-xl shadow-indigo-100/50 dark:shadow-none' 
+            onClick={() => updateFormData({ 
+              notifSettings: { ...formData.notifSettings, [item.id]: !formData.notifSettings[item.id as keyof typeof formData.notifSettings] }
+            })}
+            className={`p-5 rounded-[32px] border transition-all cursor-pointer flex items-center justify-between ${
+              formData.notifSettings[item.id as keyof typeof formData.notifSettings]
+                ? 'bg-white dark:bg-slate-900 border-indigo-600 shadow-xl shadow-indigo-100/50 dark:shadow-none'
                 : 'bg-white/50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800'
             }`}
           >
-            <div className={`p-3 rounded-2xl ${role === item.id ? 'bg-indigo-600 text-white' : 'bg-slate-50 dark:bg-slate-800 ' + item.color}`}>
-              <item.icon className="w-6 h-6" />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">{item.title}</h4>
-              <p className="text-[10px] font-medium text-slate-400">{item.sub}</p>
-            </div>
-            {role === item.id && (
-              <div className="w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center">
-                <Check className="w-3 h-3 text-white" />
+            <div className="flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                formData.notifSettings[item.id as keyof typeof formData.notifSettings] ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+              }`}>
+                <item.icon className="w-5 h-5" />
               </div>
-            )}
-          </motion.button>
-        ))}
-      </div>
-      <button 
-        disabled={!role}
-        onClick={nextStep}
-        className={`mt-10 w-full py-5 rounded-[28px] text-xs font-bold uppercase tracking-[0.2em] transition-all ${
-          role 
-            ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95' 
-            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-        }`}
-      >
-        Continue
-      </button>
-    </div>
-  );
-
-  const renderPermissions = () => (
-    <div className="flex flex-col h-full px-8 pt-16">
-      <div className="text-center mb-10">
-        <h2 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-2">Allow</h2>
-        <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">Permissions</h3>
-        <p className="text-[11px] font-medium text-slate-400 mt-2">To make the app work perfectly, we need access to a few things.</p>
-      </div>
-      <div className="space-y-4">
-        {[
-          { id: 'location', title: 'Location', sub: 'For accurate check-in', icon: MapPin, color: 'text-indigo-500' },
-          { id: 'camera', title: 'Camera', sub: 'To scan QR codes', icon: Camera, color: 'text-emerald-500' },
-          { id: 'notifications', title: 'Notifications', sub: 'To keep you updated', icon: Bell, color: 'text-rose-500' }
-        ].map((item) => (
-          <div
-            key={item.id}
-            className="w-full p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-5">
-              <div className={`p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 ${item.color}`}>
-                <item.icon className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">{item.title}</h4>
-                <p className="text-[10px] font-medium text-slate-400">{item.sub}</p>
+              <div className="flex-1">
+                <h4 className="text-[13px] font-bold text-slate-900 dark:text-white">{item.title}</h4>
+                <p className="text-[10px] font-medium text-slate-400">{item.desc}</p>
               </div>
             </div>
-            <button 
-              onClick={() => setPermissions(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-              className={`p-1.5 rounded-full transition-colors ${permissions[item.id as keyof typeof permissions] ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-800'}`}
-            >
-              <Check className={`w-3 h-3 text-white transition-opacity ${permissions[item.id as keyof typeof permissions] ? 'opacity-100' : 'opacity-0'}`} />
-            </button>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+              formData.notifSettings[item.id as keyof typeof formData.notifSettings] ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800'
+            }`}>
+              {formData.notifSettings[item.id as keyof typeof formData.notifSettings] && <Check className="w-3 h-3" />}
+            </div>
           </div>
         ))}
       </div>
-      <button 
-        onClick={nextStep}
-        className="mt-10 w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
-      >
-        Complete Setup
-      </button>
+
+      <div className="mt-auto pt-6 pb-10">
+        <button 
+          onClick={handleNext}
+          className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderSecurity = () => (
+    <div className="flex flex-col h-full px-8 pt-10">
+      <div className="mb-8">
+        <h2 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-2">Step 3</h2>
+        <h3 className="text-2xl font-black text-slate-900 dark:text-white">Security Settings</h3>
+        <p className="text-xs font-medium text-slate-400 mt-1">Keep your account safe and secure.</p>
+      </div>
+
+      <div className="space-y-4">
+        <div 
+          onClick={() => updateFormData({ 
+            securitySettings: { ...formData.securitySettings, deviceBinding: !formData.securitySettings.deviceBinding }
+          })}
+          className={`p-6 rounded-[32px] border transition-all cursor-pointer ${
+            formData.securitySettings.deviceBinding
+              ? 'bg-white dark:bg-slate-900 border-indigo-600 shadow-xl shadow-indigo-100/50 dark:shadow-none'
+              : 'bg-white/50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800'
+          }`}
+        >
+          <div className="flex items-center gap-5 mb-3">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+              formData.securitySettings.deviceBinding ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+            }`}>
+              <Smartphone className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-[14px] font-bold text-slate-900 dark:text-white">Device Binding</h4>
+              <p className="text-[10px] font-medium text-slate-400">Lock access to your specific device</p>
+            </div>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+              formData.securitySettings.deviceBinding ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800'
+            }`}>
+              {formData.securitySettings.deviceBinding && <Check className="w-3 h-3" />}
+            </div>
+          </div>
+          <p className="text-[10px] font-medium text-slate-400 leading-relaxed pl-1">
+            This prevents others from logging into your account from unauthorized phones. Highy recommended for secure attendance.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-auto pt-6 pb-10">
+        <button 
+          onClick={handleNext}
+          disabled={loading}
+          className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          {loading ? 'Setting up...' : 'Complete'} <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 
   const renderSuccess = () => (
-    <div className="flex flex-col items-center justify-center h-full px-8 text-center pt-10">
+    <div className="flex flex-col items-center justify-center h-full px-8 text-center pt-20">
       <motion.div 
         initial={{ scale: 0.2, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', damping: 12 }}
-        className="w-32 h-32 mb-10 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-2xl shadow-indigo-200 dark:shadow-none"
+        className="w-32 h-32 mb-10 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-2xl shadow-emerald-100 dark:shadow-none"
       >
         <Check className="w-16 h-16" />
       </motion.div>
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }}>
-        <h3 className="text-3xl font-black text-slate-900 dark:text-white mb-2 leading-tight">You're All Set! 🎉</h3>
+        <h3 className="text-3xl font-black text-slate-900 dark:text-white mb-2 leading-tight">All Set! 🎉</h3>
         <p className="text-sm font-medium text-slate-400 max-w-[240px] mx-auto leading-relaxed">
-          Let's make attendance tracking smarter together.
+          Your account is now ready. Redirecting you to your dashboard...
         </p>
       </motion.div>
-      <motion.button 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        onClick={onComplete}
-        className="mt-12 w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold py-5 rounded-[28px] text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-200 dark:shadow-none active:scale-95 transition-all"
-      >
-        Go to Dashboard
-      </motion.button>
     </div>
   );
 
   const getContent = () => {
     switch (currentStep) {
       case 'welcome': return renderWelcome();
-      case 'feature_checkin': return renderFeature("Quick & Easy", "Check-In", "Scan a QR code or use location check-in. Fast, simple and accurate.", Scan, "text-indigo-600", "bg-indigo-50 dark:bg-indigo-500/10");
-      case 'feature_stats': return renderFeature("All Your", "Attendance in One Place", "Track your attendance, history and leave — all in one smart dashboard.", Layout, "text-emerald-600", "bg-emerald-50 dark:bg-emerald-500/10");
-      case 'feature_insights': return renderFeature("Insights that", "Drive You Forward", "Get detailed reports and analytics to understand your performance better.", BarChart3, "text-rose-600", "bg-rose-50 dark:bg-rose-500/10");
-      case 'feature_notif': return renderFeature("Stay Notified,", "Always", "Real-time alerts and updates so you never miss what matters.", Bell, "text-amber-600", "bg-amber-50 dark:bg-amber-500/10");
-      case 'feature_global': return renderFeature("Works Where", "You Work", "From offices to hospitals, schools to remote sites — Doorlog fits everywhere.", Globe, "text-purple-600", "bg-purple-50 dark:bg-purple-500/10");
-      case 'feature_secure': return renderFeature("Your Data,", "Always Protected", "Enterprise-grade security to keep your data safe and private.", ShieldCheck, "text-indigo-600", "bg-indigo-50 dark:bg-indigo-900/10");
-      case 'role_selection': return renderRoleSelection();
-      case 'permissions': return renderPermissions();
+      case 'profile_setup': return renderProfileSetup();
+      case 'notifications': return renderNotifications();
+      case 'security': return renderSecurity();
       case 'success': return renderSuccess();
       default: return null;
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-[200] flex flex-col overflow-x-hidden overflow-y-auto transition-colors font-sans no-scrollbar pb-10">
-      {/* Top Progress bar for features */}
+    <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[200] flex flex-col overflow-hidden transition-colors font-sans no-scrollbar">
+      {/* Progress Bar */}
       {currentStep !== 'welcome' && currentStep !== 'success' && (
-        <div className="absolute top-12 inset-x-8 h-1 flex gap-2 z-[210]">
-          {steps.slice(1, -1).map((_, i) => (
-            <div 
-              key={i} 
-              className={`flex-1 rounded-full transition-all duration-500 ${
-                i + 1 <= currentStepIndex ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-800'
-              }`} 
-            />
-          ))}
+        <div className="absolute top-0 inset-x-0 h-1.5 flex gap-0.5 z-[210]">
+          {(user?.role === 'Admin' 
+            ? ['profile_setup', 'notifications', 'security'] 
+            : ['profile_setup', 'notifications']
+          ).map((step, i, arr) => {
+            const currentIndex = arr.indexOf(currentStep);
+            return (
+              <div 
+                key={step} 
+                className={`flex-1 transition-all duration-700 ${
+                  i <= currentIndex ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-800'
+                }`} 
+              />
+            );
+          })}
         </div>
       )}
 
@@ -291,31 +366,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) =>
           {getContent()}
         </motion.div>
       </AnimatePresence>
-
-      {/* Footer Controls for features */}
-      {currentStep.startsWith('feature_') && (
-        <div className="px-8 pb-10 flex justify-between items-center">
-          <button 
-            onClick={onComplete}
-            className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 py-2"
-          >
-            Skip
-          </button>
-          
-          <div className="flex gap-1.5">
-             {steps.slice(1, 7).map((_, i) => (
-               <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i + 1 === currentStepIndex ? 'w-4 bg-indigo-600' : 'bg-slate-200 dark:bg-slate-800'}`} />
-             ))}
-          </div>
-
-          <button 
-            onClick={nextStep}
-            className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100 dark:shadow-none active:scale-90 transition-all"
-          >
-            <ArrowRight className="w-5 h-5" />
-          </button>
-        </div>
-      )}
     </div>
   );
 };
+

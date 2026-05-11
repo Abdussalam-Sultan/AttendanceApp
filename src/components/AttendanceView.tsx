@@ -37,7 +37,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
-  const [viewMode, setViewMode] = useState<'personal' | 'all'>('personal');
+  const [viewMode, setViewMode] = useState<'personal' | 'all'>(() => {
+    const saved = sessionStorage.getItem('attendance_view_mode');
+    return (saved as 'personal' | 'all') || 'personal';
+  });
   const [searchQuery, setSearchQuery] = useState('');
 
   // --- History Sync for Attendance Overlays ---
@@ -102,7 +105,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       if (userRes.role === 'Admin' || userRes.role === 'Manager') {
          const allRecords = await api.getAllAttendanceRecords();
          setRecords(allRecords);
-         setViewMode('all'); // Default to global for admins
+         // Only set to 'all' if no preference is saved and it's the initial load
+         if (!silent && !currentUser && !sessionStorage.getItem('attendance_view_mode')) {
+            setViewMode('all');
+         }
       } else {
          setRecords(myRecordsRes);
       }
@@ -192,7 +198,13 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       setViewDate(day);
     }
     setSelectedDay(day);
-    setSelectedRecord(record || null);
+    
+    // Only open the individual record detail modal if we're in personal mode
+    if (viewMode === 'personal') {
+      setSelectedRecord(record || null);
+    } else {
+      setSelectedRecord(null);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -399,7 +411,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                   }`}
                 >
                   {/* Subtle Background Tint for Status */}
-                  {isSelectedMonth && myRecord && (
+                  {isSelectedMonth && myRecord && viewMode !== 'all' && (
                     <div className={`absolute inset-1 rounded-xl opacity-[0.08] dark:opacity-[0.15] ${
                       myRecord.status === 'present' ? 'bg-emerald-500' : 
                       myRecord.status === 'late' ? 'bg-amber-500' : 
@@ -411,24 +423,14 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                     {format(day, 'd')}
                   </span>
                   
-                  {dayRecords.length > 0 ? (
+                  {dayRecords.length > 0 && viewMode !== 'all' ? (
                     <div className="absolute bottom-1.5 flex gap-0.5">
-                      {viewMode === 'all' ? (
-                        dayRecords.slice(0, 3).map((r, idx) => (
-                          <div key={idx} className={`w-1 h-1 rounded-full ${
-                            r.status === 'present' ? 'bg-emerald-500' : 
-                            r.status === 'late' ? 'bg-amber-500' : 
-                            r.status === 'leave' ? 'bg-indigo-500' : 'bg-red-500'
-                          }`} />
-                        ))
-                      ) : (
-                        myRecord && (
-                          <div className={`w-1.5 h-1.5 rounded-full ${
-                            myRecord.status === 'present' ? 'bg-emerald-500' : 
-                            myRecord.status === 'late' ? 'bg-amber-500' : 
-                            myRecord.status === 'leave' ? 'bg-indigo-500' : 'bg-red-500'
-                          }`} />
-                        )
+                      {myRecord && (
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          myRecord.status === 'present' ? 'bg-emerald-500' : 
+                          myRecord.status === 'late' ? 'bg-amber-500' : 
+                          myRecord.status === 'leave' ? 'bg-indigo-500' : 'bg-red-500'
+                        }`} />
                       )}
                     </div>
                   ) : (
@@ -457,7 +459,9 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                   <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
                     {format(selectedDay, 'EEEE, dd MMMM yyyy')}
                   </h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected Date Details</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    {viewMode === 'all' ? 'Team Attendance' : 'Selected Date Details'}
+                  </p>
                 </div>
                 <button 
                   onClick={() => { setSelectedDay(null); setSelectedRecord(null); }}
@@ -473,8 +477,8 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                   const matchesDate = isSameDay(rDate, selectedDay);
 
                   if (viewMode === 'personal') {
-                     const empId = (r as any).User?.employeeId || r.user?.employeeId;
-                     return matchesDate && (!empId || empId === currentUser?.employeeId);
+                    const empId = (r as any).User?.employeeId || r.user?.employeeId;
+                    return matchesDate && (!empId || empId === currentUser?.employeeId);
                   }
                   return matchesDate;
                 } catch (e) {
@@ -488,61 +492,76 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                       const matchesDate = isSameDay(rDate, selectedDay);
                                           
                       if (viewMode === 'personal') {
-                         const empId = (r as any).User?.employeeId || r.user?.employeeId;
-                         return matchesDate && (!empId || empId === currentUser?.employeeId);
+                        const empId = (r as any).User?.employeeId || r.user?.employeeId;
+                        return matchesDate && (!empId || empId === currentUser?.employeeId);
                       }
                       return matchesDate;
                     } catch (e) {
                       return false;
                     }
-                  }).map((dayRec, idx) => (
-                    <div key={dayRec.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-                      {viewMode === 'all' && (dayRec.user || (dayRec as any).User) && (
-                        <div className="flex justify-between items-start mb-3 border-b border-slate-100 dark:border-slate-700 pb-2">
-                           <div>
-                             <p className="text-xs font-black text-slate-900 dark:text-white">{(dayRec as any).User?.name || dayRec.user?.name}</p>
-                             <div className="flex items-center justify-between group">
-                               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{(dayRec as any).User?.employeeId || dayRec.user?.employeeId}</p>
-                               <CopyButton value={String((dayRec as any).User?.employeeId || dayRec.user?.employeeId)} label="Employee ID" className="scale-75 opacity-0 group-hover:opacity-100 transition-opacity" />
-                             </div>
-                           </div>
-                           <div className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border shrink-0 ${getStatusStyle(dayRec.status)}`}>
-                             {dayRec.status}
-                           </div>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                          <div>
-                            <p className="text-[8px] font-bold text-slate-400 uppercase">In</p>
-                            <p className="text-[10px] font-black text-slate-800 dark:text-white">{dayRec.checkIn}</p>
+                  }).map((dayRec) => {
+                    const user = (dayRec as any).User || dayRec.user;
+                    return (
+                      <div 
+                        key={dayRec.id} 
+                        className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-[28px] border border-slate-100 dark:border-slate-700/50 flex gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] group relative cursor-pointer"
+                        onClick={() => {
+                          setSelectedRecord(dayRec);
+                          haptics.selection();
+                        }}
+                      >
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          <div className="space-y-1">
+                            {viewMode === 'all' && user && (
+                              <div className="flex flex-col mb-1.5 border-b border-slate-200/50 dark:border-slate-700/50 pb-1.5">
+                                 <p className="text-xs font-black text-slate-900 dark:text-white truncate">
+                                   {user.name}
+                                 </p>
+                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">
+                                   {user.employeeId}
+                                 </p>
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1.5">
+                                <Clock className="w-3 h-3 text-indigo-500" />
+                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 tabular-nums">
+                                  {dayRec.checkIn} — {dayRec.checkOut || '--:--'}
+                                </span>
+                              </div>
+                              {dayRec.branchName && (
+                                <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/5 rounded-lg border border-indigo-100/50 dark:border-indigo-500/10 max-w-[100px]">
+                                  <Building2 className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+                                  <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400 truncate tracking-tight">
+                                    {user?.Branch?.name || dayRec.branchName}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                          <div>
-                            <p className="text-[8px] font-bold text-slate-400 uppercase">Out</p>
-                            <p className="text-[10px] font-black text-slate-800 dark:text-white">{dayRec.checkOut || '--:--'}</p>
+
+                        <div className="flex flex-col items-end justify-center gap-1.5 shrink-0">
+                          <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border ${getStatusStyle(dayRec.status)}`}>
+                            {dayRec.status}
                           </div>
+                          {dayRec.lateMinutes > 0 && (
+                            <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 rounded-lg">+{dayRec.lateMinutes}m</span>
+                          )}
                         </div>
                       </div>
-                      {viewMode === 'personal' && (
-                        <div className="mt-3 flex justify-end">
-                           <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getStatusStyle(dayRec.status)}`}>
-                             {dayRec.status}
-                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center text-center">
                   <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-3 text-slate-300">
                     <Info className="w-6 h-6" />
                   </div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No production logs for this date</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                    {viewMode === 'all' ? 'No attendance records for team' : 'No production logs for this date'}
+                  </p>
                   <p className="text-[10px] font-medium text-slate-300 dark:text-slate-600 mt-1 uppercase tracking-tight">System synchronization pending or non-working day</p>
                 </div>
               )}
@@ -557,19 +576,21 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
           )}
         </AnimatePresence>
         
-        <div className="mt-8 flex gap-3 overflow-x-auto no-scrollbar pb-2">
-          {[
-            { label: 'Present', color: 'bg-emerald-500' },
-            { label: 'Late', color: 'bg-amber-500' },
-            { label: 'Absent', color: 'bg-red-500' },
-            { label: 'Leave', color: 'bg-indigo-500' },
-          ].map(legend => (
-            <div key={legend.label} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-full border border-slate-100 dark:border-slate-800 whitespace-nowrap">
-              <div className={`w-2 h-2 rounded-full ${legend.color}`} />
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{legend.label}</span>
-            </div>
-          ))}
-        </div>
+        {viewMode !== 'all' && (
+          <div className="mt-8 flex gap-3 overflow-x-auto no-scrollbar pb-2">
+            {[
+              { label: 'Present', color: 'bg-emerald-500' },
+              { label: 'Late', color: 'bg-amber-500' },
+              { label: 'Absent', color: 'bg-red-500' },
+              { label: 'Leave', color: 'bg-indigo-500' },
+            ].map(legend => (
+              <div key={legend.label} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-full border border-slate-100 dark:border-slate-800 whitespace-nowrap">
+                <div className={`w-2 h-2 rounded-full ${legend.color}`} />
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{legend.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -590,9 +611,6 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{viewMode === 'all' ? 'Team Performance' : 'Attendance Mix'}</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(viewDate, 'MMMM yyyy')}</p>
-              </div>
-              <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl text-indigo-600">
-                <TrendingUp className="w-5 h-5" />
               </div>
            </div>
 
@@ -786,7 +804,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       {isAdmin && (
         <div className="flex gap-2 bg-indigo-50/50 dark:bg-indigo-500/5 p-1 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
           <button
-            onClick={() => setViewMode('personal')}
+            onClick={() => {
+              setViewMode('personal');
+              sessionStorage.setItem('attendance_view_mode', 'personal');
+            }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               viewMode === 'personal' 
                 ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' 
@@ -797,7 +818,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
             My Logs
           </button>
           <button
-            onClick={() => setViewMode('all')}
+            onClick={() => {
+              setViewMode('all');
+              sessionStorage.setItem('attendance_view_mode', 'all');
+            }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               viewMode === 'all' 
                 ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' 
@@ -929,6 +953,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
         isOpen={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
         currentUser={currentUser}
+        onUpdate={(updatedRecord) => {
+          setRecords(prev => prev.map(r => r.id === updatedRecord.id ? { ...r, ...updatedRecord } : r));
+          setSelectedRecord(updatedRecord);
+          // Refresh stats
+          api.getAttendanceStats().then(setStats).catch(console.error);
+        }}
       />
     </div>
   );
