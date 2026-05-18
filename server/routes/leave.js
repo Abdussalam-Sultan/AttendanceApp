@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import Department from '../models/Department.js';
 import SystemSettings from '../models/SystemSettings.js';
+import { sendEmail, emailTemplates } from '../services/emailService.js';
 import { attachmentUpload } from '../config/cloudinary.js';
 import { Op } from 'sequelize';
 
@@ -48,6 +49,16 @@ router.patch('/approve/:id', authenticate, isManager, async (req, res) => {
       content: `Your leave request for ${leave.date} (${leave.type}) has been ${req.body.status.toLowerCase()}.`,
       type: 'LEAVE_STATUS'
     });
+
+    // Send email to user
+    const recipientUser = await User.findByPk(leave.userId);
+    if (recipientUser && recipientUser.email) {
+      const template = emailTemplates.leaveStatusUpdate(leave, req.body.status);
+      sendEmail({
+        to: recipientUser.email,
+        ...template
+      }).catch(err => console.error('Error sending leave status email:', err));
+    }
 
     res.send({ success: true, leave });
   } catch (error) {
@@ -104,6 +115,16 @@ router.patch('/bulk-update', authenticate, isManager, async (req, res) => {
         content: `Your leave request for ${leave.date} (${leave.type}) has been ${status.toLowerCase()}.`,
         type: 'LEAVE_STATUS'
       });
+
+      // Send email to user
+      const recipientUser = await User.findByPk(leave.userId);
+      if (recipientUser && recipientUser.email) {
+        const template = emailTemplates.leaveStatusUpdate(leave, status);
+        sendEmail({
+          to: recipientUser.email,
+          ...template
+        }).catch(err => console.error('Error sending bulk leave status email:', err));
+      }
     }
 
     res.send({ 
@@ -257,6 +278,37 @@ router.post('/request', authenticate, attachmentUpload.single('attachment'), asy
       date: `${leaveData.startDate} - ${leaveData.endDate}`,
       status: 'Pending'
     });
+
+    // Notify Admins/Managers via Email
+    try {
+      // Find managers for the same branch or Admins for the company
+      const recipients = await User.findAll({
+        where: {
+          companyId: req.companyId,
+          role: { [Op.in]: ['Admin', 'Manager'] },
+          status: 'Active'
+        }
+      });
+
+      const filteredRecipients = recipients.filter(r => {
+        if (r.role === 'Admin') return true;
+        if (r.role === 'Manager' && r.branchId === user.branchId) return true;
+        return false;
+      });
+
+      const template = emailTemplates.leaveRequest(user, leave);
+      for (const recipient of filteredRecipients) {
+        if (recipient.email) {
+          sendEmail({
+            to: recipient.email,
+            ...template
+          }).catch(err => console.error('Error sending leave request alert:', err));
+        }
+      }
+    } catch (emailErr) {
+      console.error('Failed to process email notifications for leave request:', emailErr);
+    }
+
     res.status(201).send(leave);
   } catch (error) {
     console.error('Leave Request Error:', error);

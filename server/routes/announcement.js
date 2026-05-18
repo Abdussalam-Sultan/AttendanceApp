@@ -3,6 +3,8 @@ import { authenticate, isAdmin } from '../middleware/auth.js';
 import { Op } from 'sequelize';
 import Announcement from '../models/Announcement.js';
 import Notification from '../models/Notification.js';
+import User from '../models/User.js';
+import { sendEmail, emailTemplates } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -23,6 +25,26 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
       content: req.body.title,
       type: 'ANNOUNCEMENT'
     });
+
+    // Send email to all company users
+    try {
+      const users = await User.findAll({
+        where: { companyId: req.companyId, status: 'Active' },
+        attributes: ['email']
+      });
+
+      const template = emailTemplates.announcement(announcement);
+      for (const u of users) {
+        if (u.email) {
+          sendEmail({
+            to: u.email,
+            ...template
+          }).catch(err => console.error('Error sending announcement email:', err));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to send announcement emails:', err);
+    }
 
     res.status(201).send(announcement);
   } catch (error) {

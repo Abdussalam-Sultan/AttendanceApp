@@ -3,6 +3,7 @@ import SystemSettings from '../models/SystemSettings.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
+import { sendEmail, emailTemplates } from './emailService.js';
 import { Op } from 'sequelize';
 
 const timeToMinutes = (timeStr) => {
@@ -75,6 +76,15 @@ export const runAbsenceCheck = async () => {
             content: `You were marked as absent for today (${todayStr}) as we noticed no sign-in activity.`,
             type: 'ATTENDANCE_STATUS'
           });
+
+          // Send email alert
+          if (employee.email) {
+            const template = emailTemplates.absenceAlert(employee, todayStr);
+            sendEmail({
+              to: employee.email,
+              ...template
+            }).catch(err => console.error('Error sending absence alert email:', err));
+          }
         }
       }
     }
@@ -134,6 +144,21 @@ export const runAutoCheckout = async () => {
             content: `You were automatically checked out at ${checkOutTime12h} (end of working hours).`,
             type: 'ATTENDANCE_STATUS'
           });
+
+          // Send email notification
+          const sessionUser = await User.findByPk(session.userId);
+          if (sessionUser && sessionUser.email) {
+            sendEmail({
+              to: sessionUser.email,
+              subject: 'System Auto-Checkout Notification',
+              html: `
+                <h3>Auto-Checkout Alert</h3>
+                <p>You were automatically checked out today at <strong>${checkOutTime12h}</strong> as your shift ended and no manual sign-out was recorded.</p>
+                <p>Status: Auto Checkout</p>
+                <p>Thank you.</p>
+              `
+            }).catch(err => console.error('Error sending auto-checkout email:', err));
+          }
         }
       }
     }

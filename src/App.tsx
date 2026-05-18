@@ -22,7 +22,7 @@ import { WifiOff, RefreshCcw } from 'lucide-react';
 
 type TabType = 'home' | 'attendance' | 'leave' | 'profile' | 'admin';
 
-import { ToastProvider } from './components/ToastProvider';
+import { ToastProvider, useToast } from './components/ToastProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
@@ -50,6 +50,8 @@ function AppContent() {
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
+
+  const { toast } = useToast();
 
   const refreshPendingLeaves = async () => {
     if (user?.role === 'Admin' || user?.role === 'Manager') {
@@ -153,16 +155,41 @@ function AppContent() {
     try {
       if (isCheckedIn) {
         await api.checkOut();
+        toast("Successfully checked out", "success");
       } else {
         let lat, lng;
         try {
           const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0
+            });
           });
           lat = position.coords.latitude;
           lng = position.coords.longitude;
-        } catch (e) {}
-        await api.checkIn(lat, lng);
+        } catch (e: any) {
+          console.warn("Geolocation failed", e);
+          let errorMsg = "Location access is required for attendance tracking.";
+          if (e.code === 1) errorMsg = "Location permission denied. Please grant access in your browser settings to continue.";
+          else if (e.code === 2) errorMsg = "Position unavailable. Please ensure GPS is enabled and you have a clear signal.";
+          else if (e.code === 3) errorMsg = "Location request timed out. Please try again.";
+          
+          toast(errorMsg, "error");
+          setIsAttendanceLoading(false);
+          return;
+        }
+
+        try {
+          await api.checkIn(lat, lng);
+          toast("Successfully checked in", "success");
+        } catch (err: any) {
+          const msg = err.response?.data?.error || "Check-in failed. Please try again.";
+          toast(msg, "error");
+          console.error("Check-in error:", err);
+          setIsAttendanceLoading(false);
+          return;
+        }
       }
       await refreshAttendance();
       refreshNotifications();

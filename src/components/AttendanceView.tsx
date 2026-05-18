@@ -233,10 +233,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
 
   const getStatusStyle = (status: AttendanceStatus) => {
     switch (status) {
-      case 'present': return 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
-      case 'late': return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
-      case 'absent': return 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
-      case 'leave': return 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20';
+      case 'present': return 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/5 dark:text-emerald-500 dark:border-emerald-500/10';
+      case 'late': return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-500/5 dark:text-amber-500 dark:border-amber-500/10';
+      case 'absent': return 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/5 dark:text-red-500 dark:border-red-500/10';
+      case 'leave': return 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-500/5 dark:text-indigo-500 dark:border-indigo-500/10';
     }
   };
 
@@ -258,8 +258,8 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       )}
 
       {filteredRecords.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 p-12 rounded-[32px] border border-slate-100 dark:border-slate-800 text-center">
-          <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center mx-auto mb-4 text-slate-300">
+        <div className="bg-white dark:bg-slate-900 p-12 rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
+          <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-slate-300">
              <CalendarIcon className="w-8 h-8" />
           </div>
           <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No records found</p>
@@ -272,7 +272,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
             <div 
               key={record.id} 
               id={`record-${record.id}`}
-              className="bg-white dark:bg-slate-900 p-4 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex gap-3 sm:gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group relative overflow-hidden cursor-pointer"
+              className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex gap-3 sm:gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] group relative overflow-hidden cursor-pointer"
               onClick={() => {
                 setSelectedRecord(record);
                 haptics.selection();
@@ -360,7 +360,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
 
     return (
       <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-        <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none p-4">
           <div className="grid grid-cols-7 mb-4">
             {weekDays.map(d => (
               <div key={d} className="text-[10px] font-bold text-slate-400 dark:text-slate-500 text-center uppercase tracking-widest py-2">
@@ -452,7 +452,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="mt-6 p-6 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm"
+              className="mt-6 p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -504,7 +504,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                     return (
                       <div 
                         key={dayRec.id} 
-                        className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-[28px] border border-slate-100 dark:border-slate-700/50 flex gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] group relative cursor-pointer"
+                        className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 flex gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] group relative cursor-pointer"
                         onClick={() => {
                           setSelectedRecord(dayRec);
                           haptics.selection();
@@ -567,7 +567,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
               )}
             </motion.div>
           ) : (
-            <div className="mt-6 p-8 bg-slate-50 dark:bg-slate-800/30 rounded-[32px] border-2 border-dashed border-slate-100 dark:border-slate-800/50 flex flex-col items-center justify-center text-center">
+            <div className="mt-6 p-8 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border-2 border-dashed border-slate-100 dark:border-slate-800/50 flex flex-col items-center justify-center text-center">
                <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm mb-4">
                  <CalendarIcon className="w-6 h-6 text-slate-300" />
                </div>
@@ -606,7 +606,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
         {/* Pie Chart Card */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
            <div className="flex justify-between items-center mb-8 relative z-10">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{viewMode === 'all' ? 'Team Performance' : 'Attendance Mix'}</h3>
@@ -645,7 +645,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
              )}
              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                <span className="text-3xl font-black text-slate-900 dark:text-white leading-none">{efficiency}%</span>
-               <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-full mt-2">
+               <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full mt-2">
                  {viewMode === 'all' ? 'Team Score' : 'My Score'}
                </span>
              </div>
@@ -766,7 +766,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       </div>
 
       {/* Stats Summary Bubble (Fixed Top Overview) */}
-      <div className="bg-indigo-600 dark:bg-indigo-950 p-6 pt-7 pb-8 rounded-[40px] shadow-2xl dark:shadow-none relative overflow-hidden group">
+      <div className="bg-indigo-600 dark:bg-indigo-950 p-6 rounded-3xl shadow-2xl dark:shadow-none relative overflow-hidden group">
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl transition-transform group-hover:scale-125" />
         <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-white/5 rounded-full blur-2xl font-display" />
 
@@ -835,12 +835,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1.5 bg-white dark:bg-slate-900 p-1.5 rounded-[28px] border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden min-h-[56px]">
+      <div className="flex gap-1.5 bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none overflow-hidden min-h-[56px]">
         {(['Logs', 'Calendar', 'Analytics'] as const).map((tab) => (
           <button 
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 px-4 rounded-[22px] text-xs font-black uppercase tracking-widest transition-all duration-300 relative z-10 ${
+            className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 relative z-10 ${
               activeTab === tab ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600'
             }`}
           >
@@ -848,7 +848,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
             {activeTab === tab && (
               <motion.div 
                 layoutId="activeTabUnderline"
-                className="absolute inset-0 bg-white/20 rounded-[22px] -z-10"
+                className="absolute inset-0 bg-white/20 rounded-xl -z-10"
               />
             )}
           </button>
@@ -885,7 +885,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({ initialTab = 'Lo
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] shadow-2xl z-50 p-4 grid grid-cols-3 gap-2 overflow-hidden"
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-2xl z-50 p-4 grid grid-cols-3 gap-2 overflow-hidden"
                 >
                   {Array.from({ length: 12 }).map((_, i) => {
                     const date = new Date(viewDate.getFullYear(), i, 1);

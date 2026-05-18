@@ -158,10 +158,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <div className="w-32 h-4 bg-slate-100 dark:bg-slate-800 rounded-full"></div>
           <div className="w-48 h-8 bg-slate-100 dark:bg-slate-800 rounded-xl"></div>
         </div>
-        <div className="w-full h-64 bg-slate-100 dark:bg-slate-800 rounded-[40px]"></div>
+        <div className="w-full h-64 bg-slate-100 dark:bg-slate-800 rounded-3xl"></div>
         <div className="grid grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="aspect-square bg-slate-100 dark:bg-slate-800 rounded-[32px]"></div>
+            <div key={i} className="aspect-square bg-slate-100 dark:bg-slate-800 rounded-3xl"></div>
           ))}
         </div>
       </div>
@@ -268,7 +268,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </motion.div>
 
       {/* Status Card */}
-      <motion.div variants={itemVariants} className="relative overflow-hidden bg-gradient-to-br from-indigo-600 to-indigo-500 dark:from-indigo-700 dark:to-indigo-600 p-8 rounded-[40px] shadow-2xl text-white">
+      <motion.div variants={itemVariants} className="relative overflow-hidden bg-gradient-to-br from-indigo-600 to-indigo-500 dark:from-indigo-700 dark:to-indigo-600 p-8 rounded-3xl shadow-2xl text-white">
         {/* Background Decoration */}
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -305,14 +305,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="grid grid-cols-2 w-full gap-4 mb-8">
-            <div className="flex flex-col items-center p-3 bg-white/5 rounded-[24px] border border-white/10 transition-colors hover:bg-white/10">
+            <div className="flex flex-col items-center p-3 bg-white/5 rounded-3xl border border-white/10 transition-colors hover:bg-white/10">
               <p className="text-indigo-200 text-[9px] font-bold uppercase tracking-widest mb-1">Check In</p>
               <div className="flex items-center gap-2">
                 <LogIn className="w-3" />
                 <span className="text-lg font-bold">{todayRecord?.checkIn || '--:--'}</span>
               </div>
             </div>
-            <div className="flex flex-col items-center p-3 bg-white/5 rounded-[24px] border border-white/10 transition-colors hover:bg-white/10">
+            <div className="flex flex-col items-center p-3 bg-white/5 rounded-3xl border border-white/10 transition-colors hover:bg-white/10">
               <p className="text-indigo-200 text-[9px] font-bold uppercase tracking-widest mb-1">Check Out</p>
               <div className="flex items-center gap-2">
                 <LogOut className="w-3" />
@@ -326,7 +326,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             whileTap={{ y: 0, scale: 0.98 }}
             onClick={handleAction}
             disabled={isActionLoading || isDayCompleted}
-            className={`w-full py-4 px-6 rounded-[24px] flex items-center justify-center gap-3 shadow-2xl transition-all font-black text-sm uppercase tracking-widest ${
+            className={`w-full py-4 px-6 rounded-2xl flex items-center justify-center gap-3 shadow-2xl transition-all font-bold text-sm uppercase tracking-widest ${
               isCheckedIn 
                 ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/20' 
                 : isDayCompleted 
@@ -359,7 +359,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onClick={() => handleActionWithHaptic(action)}
             className="flex flex-col items-center gap-2 group min-w-0"
           >
-            <div className={`w-full aspect-square flex items-center justify-center rounded-[28px] ${action.color} dark:bg-opacity-10 transition-all duration-300 active:scale-90 shadow-sm border border-slate-100 dark:border-slate-800`}>
+            <div className={`w-full aspect-square flex items-center justify-center rounded-2xl ${action.color} dark:bg-opacity-10 transition-all duration-300 active:scale-90 shadow-sm border border-slate-100 dark:border-slate-800`}>
               <action.icon className="w-6 h-6" />
             </div>
             <span className="text-[10px] text-center font-bold text-slate-700 dark:text-slate-300 leading-tight truncate w-full px-1">
@@ -370,7 +370,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </motion.div>
 
       {/* Monthly Overview Summary */}
-      <motion.div variants={itemVariants} className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm">
+      <motion.div variants={itemVariants} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
         <div className="flex justify-between items-center mb-6 px-1">
           <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Monthly Performance</h2>
           <button 
@@ -389,10 +389,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
             { label: 'Leave', value: stats?.leave ?? 0, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50 dark:bg-indigo-500/10' },
           ].map((stat, idx) => (
             <div key={idx} className="flex flex-col items-center">
-              <div className={`w-full aspect-square max-w-[48px] rounded-[22px] flex items-center justify-center mb-2 ${stat.bgColor} ${stat.color} shadow-sm transition-transform active:scale-95`}>
-                <span className="text-xl font-black">{stat.value}</span>
+              <div className={`w-full aspect-square max-w-[48px] rounded-xl flex items-center justify-center mb-2 ${stat.bgColor} ${stat.color} shadow-sm transition-transform active:scale-95`}>
+                <span className="text-xl font-bold">{stat.value}</span>
               </div>
-              <span className={`text-[9px] font-black uppercase tracking-widest ${stat.color}`}>{stat.label}</span>
+              <span className={`text-[9px] font-bold uppercase tracking-widest ${stat.color}`}>{stat.label}</span>
             </div>
           ))}
         </div>
@@ -400,7 +400,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Branch Performance Summary */}
       {branchStats && (
-        <motion.div variants={itemVariants} className="bg-slate-900 dark:bg-slate-900/50 p-6 rounded-[32px] text-white overflow-hidden relative shadow-xl">
+        <motion.div variants={itemVariants} className="bg-slate-900 dark:bg-slate-900/50 p-6 rounded-2xl text-white overflow-hidden relative shadow-xl">
           <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
           
           <div className="flex justify-between items-center mb-6 relative z-10">
@@ -415,14 +415,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-3 relative z-10">
-            <div className="bg-white/5 border border-white/10 p-4 rounded-[24px]">
+            <div className="bg-white/5 border border-white/10 p-4 rounded-3xl">
               <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">Attendance Ratio</p>
               <div className="flex items-baseline gap-1">
                 <span className="text-xl font-black font-display">{branchStats.averageAttendance}%</span>
               </div>
             </div>
             
-            <div className="bg-white/5 border border-white/10 p-4 rounded-[24px]">
+            <div className="bg-white/5 border border-white/10 p-4 rounded-3xl">
               <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">Active Today</p>
               <div className="flex items-baseline gap-1">
                 <span className="text-xl font-black font-display">{branchStats.activeToday}</span>
@@ -434,9 +434,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       {/* Announcements */}
-      <motion.div variants={itemVariants} className="p-5 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4">
+      <motion.div variants={itemVariants} className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">Recent Updates</h2>
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Recent Updates</h2>
           {announcements.length > 0 && <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-lg text-[9px] font-bold">{announcements.length}</span>}
         </div>
         
@@ -450,7 +450,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             }}
             className="flex items-center gap-4 group border-b border-slate-50 dark:border-slate-800 last:border-0 pb-4 last:pb-0 cursor-pointer"
           >
-            <div className={`p-3 rounded-[20px] ${idx % 2 === 0 ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'} shadow-sm`}>
+            <div className={`p-3 rounded-xl ${idx % 2 === 0 ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'} shadow-sm`}>
               <Bell className="w-5 h-5" />
             </div>
             <div className="flex-1 overflow-hidden">
@@ -481,7 +481,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[211] rounded-3xl shadow-2xl p-8 flex flex-col"
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 shadow-sm">
@@ -508,7 +508,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                      {selectedAnnouncement.date}
                    </span>
                 </div>
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">
                   {selectedAnnouncement.title}
                 </h3>
               </div>
@@ -579,7 +579,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="flex-1 px-4 py-8 space-y-8 overflow-y-auto no-scrollbar">
                 {/* User Info Section */}
                 <div className="px-2">
-                  <div className="p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/50 dark:to-slate-800/30 rounded-[28px] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
+                  <div className="p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/50 dark:to-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
                      <div className="w-12 h-12 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-md transition-transform group-hover:scale-105">
                        {user.avatar ? (
                          <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -626,7 +626,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                 {/* Today's Glance Section */}
                 <div className="px-2">
-                  <div className="p-5 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-[32px] border border-indigo-100/50 dark:border-indigo-500/10">
+                  <div className="p-5 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-3xl border border-indigo-100/50 dark:border-indigo-500/10">
                     <p className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.15em] mb-3">Today's Glance</p>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">

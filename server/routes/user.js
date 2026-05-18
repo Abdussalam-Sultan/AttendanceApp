@@ -3,6 +3,7 @@ import { authenticate, isAdmin } from '../middleware/auth.js';
 import User from '../models/User.js';
 import LoginHistory from '../models/LoginHistory.js';
 import { upload } from '../config/cloudinary.js';
+import { sendEmail, emailTemplates } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -122,6 +123,15 @@ router.post('/change-password', authenticate, async (req, res) => {
 
     req.user.password = newPassword;
     await req.user.save();
+    
+    // Send password change notification
+    if (req.user.email) {
+      const template = emailTemplates.passwordChange(req.user);
+      sendEmail({
+        to: req.user.email,
+        ...template
+      }).catch(err => console.error('Error sending password change email:', err));
+    }
     
     res.send({ message: 'Password updated successfully' });
   } catch (error) {

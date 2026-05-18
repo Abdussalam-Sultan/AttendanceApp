@@ -264,7 +264,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
              <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 text-indigo-600 animate-spin" /></div>
           ) : filteredHistory.length > 0 ? (
             filteredHistory.map((leave) => (
-              <div key={leave.id} className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
+              <div key={leave.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
                 <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-bold ${
                   leave.status === 'Approved' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
                   leave.status === 'Rejected' ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
@@ -505,7 +505,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800"
+                className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800"
               >
                 <div className="bg-indigo-600 p-6 text-white relative overflow-hidden">
                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl transform translate-x-12 -translate-y-12"></div>
@@ -581,7 +581,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
 
       {/* Leave Balance Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-indigo-600 dark:bg-indigo-700 p-5 rounded-3xl text-white shadow-lg relative overflow-hidden group">
+        <div className="bg-indigo-600 dark:bg-indigo-700 p-5 rounded-2xl text-white shadow-lg relative overflow-hidden group">
            <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
            <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1">Annual Leave</p>
            <div className="flex items-baseline gap-2">
@@ -589,7 +589,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
              <span className="text-indigo-100 text-[10px] font-bold">Days Left</span>
            </div>
         </div>
-        <div className="bg-emerald-500 dark:bg-emerald-600 p-5 rounded-3xl text-white shadow-lg relative overflow-hidden group">
+        <div className="bg-emerald-500 dark:bg-emerald-600 p-5 rounded-2xl text-white shadow-lg relative overflow-hidden group">
            <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
            <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1">Sick Leave</p>
            <div className="flex items-baseline gap-2">
@@ -597,7 +597,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
              <span className="text-emerald-100 text-[10px] font-bold">Days Left</span>
            </div>
         </div>
-        <div className="bg-amber-500 dark:bg-amber-600 p-5 rounded-3xl text-white shadow-lg relative overflow-hidden group">
+        <div className="bg-amber-500 dark:bg-amber-600 p-5 rounded-2xl text-white shadow-lg relative overflow-hidden group">
            <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
            <p className="text-amber-100 text-[10px] font-bold uppercase tracking-widest mb-1">Casual Leave</p>
            <div className="flex items-baseline gap-2">
@@ -605,7 +605,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
              <span className="text-amber-100 text-[10px] font-bold">Days Left</span>
            </div>
         </div>
-        <div className="bg-slate-600 dark:bg-slate-700 p-5 rounded-3xl text-white shadow-lg relative overflow-hidden group">
+        <div className="bg-slate-600 dark:bg-slate-700 p-5 rounded-2xl text-white shadow-lg relative overflow-hidden group">
            <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
            <p className="text-slate-100 text-[10px] font-bold uppercase tracking-widest mb-1">Unpaid Leave</p>
            <div className="flex items-baseline gap-2">
@@ -617,7 +617,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
 
       <button 
         onClick={() => setShowForm(true)}
-        className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white p-4 rounded-3xl flex items-center justify-center gap-3 shadow-xl dark:shadow-none hover:bg-slate-800 dark:hover:bg-slate-100 transition-all active:scale-[0.98] mt-2 mb-2 group"
+        className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white p-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl dark:shadow-none hover:bg-slate-800 dark:hover:bg-slate-100 transition-all active:scale-[0.98] mt-2 mb-2 group"
       >
         <div className="p-2 bg-indigo-500 rounded-2xl group-hover:rotate-90 transition-transform duration-500">
            <Plus className="w-5 h-5" />
@@ -641,7 +641,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
           {loading ? (
              <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 text-slate-200 dark:text-slate-700 animate-spin" /></div>
           ) : leaveHistory.slice(0, 2).map((leave, idx) => (
-            <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
+            <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
               <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-bold ${
                 leave.status === 'Pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
               }`}>
@@ -671,7 +671,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
 
       {/* Summary Card and Policy Link */}
       <div className="flex flex-col gap-3 mt-2">
-        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-center">
+        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-center">
            <div className="p-3 bg-white dark:bg-slate-900 w-fit mx-auto rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-4">
               <FileText className="w-6 h-6 text-slate-400 dark:text-slate-600" />
            </div>
@@ -682,7 +682,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
         <a 
           href="#" 
           onClick={(e) => { e.preventDefault(); setShowPolicy(true); }}
-          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl flex items-center justify-between group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
         >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
@@ -712,7 +712,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[201] rounded-[40px] shadow-2xl p-8 flex flex-col"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[201] rounded-3xl shadow-2xl p-8 flex flex-col"
             >
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
@@ -768,7 +768,7 @@ export const LeaveView: React.FC<{ onRefreshPendingCount?: () => void }> = ({ on
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg h-[80vh] bg-white dark:bg-slate-900 z-[201] rounded-[40px] shadow-2xl p-6 flex flex-col"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg h-[80vh] bg-white dark:bg-slate-900 z-[201] rounded-3xl shadow-2xl p-6 flex flex-col"
             >
               <div className="flex justify-between items-center mb-4">
                 <div className="flex flex-col">

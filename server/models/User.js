@@ -94,6 +94,22 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  isEmailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  verificationToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  resetPasswordToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  resetPasswordExpires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   companyId: {
     type: DataTypes.UUID,
     allowNull: true,

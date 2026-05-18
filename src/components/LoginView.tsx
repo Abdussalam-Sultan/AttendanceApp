@@ -20,6 +20,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationNeeded, setVerificationNeeded] = useState<{ email: string } | null>(null);
   const [branches, setBranches] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     email: '',
@@ -72,6 +73,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     return true;
   };
 
+  const handleResendLink = async () => {
+    if (!verificationNeeded) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verificationNeeded.email })
+      });
+      if (!res.ok) throw new Error('Resend failed');
+      toast("Verification link has been resent!", "success");
+    } catch (err) {
+      toast("Failed to resend link. Please try again later.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLogin) {
@@ -93,6 +112,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     }
     setLoading(true);
     setError(null);
+    setVerificationNeeded(null);
     
     // Generate or fetch Device ID for binding
     let deviceId = localStorage.getItem('DOORLOG_DEVICE_ID');
@@ -117,14 +137,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Setup failed');
         
-        // After setup, automatically log them in
-        const loginRes = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, password: formData.password, deviceId })
-        });
-        data = await loginRes.json();
-        if (!loginRes.ok) throw new Error(data.error || 'Initial login failed');
+        // After setup, automatically handle verification logic or login
+        setIsLogin(true);
+        setIsNewOrg(false);
+        setVerificationNeeded({ email: formData.email });
+        toast("Organization setup! Please verify your admin email.", "success");
+        return;
       } else {
         const payload = isLogin 
           ? { email: formData.email, password: formData.password, deviceId }
@@ -145,9 +163,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         
         data = await res.json();
         if (!res.ok) {
+          if (data.error === 'EMAIL_NOT_VERIFIED') {
+            setVerificationNeeded({ email: data.email });
+            return;
+          }
           let errorMessage = data.error || (isLogin ? 'Login failed' : 'Registration failed');
           if (data.details) errorMessage += `: ${data.details}`;
           throw new Error(errorMessage);
+        }
+
+        if (!isLogin) {
+            // After registration
+            setVerificationNeeded({ email: formData.email });
+            setIsLogin(true);
+            toast("Account created! Verify your email to continue.", "success");
+            return;
         }
       }
       
@@ -164,10 +194,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Simulate reset email
-    await new Promise(r => setTimeout(r, 1500));
-    setResetSent(true);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail })
+      });
+      if (!res.ok) throw new Error('Check email failed');
+      setResetSent(true);
+    } catch (err) {
+      toast("Could not process reset request. Try again later.", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -176,224 +215,252 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       <div className="pt-12 pb-10 text-center">
         <Logo size={80} className="mb-8 drop-shadow-2xl" />
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-          {isNewOrg ? 'New Organization' : (isLogin ? 'Welcome Back' : 'Join Team')}
+          {verificationNeeded ? 'Check Your Email' : (isNewOrg ? 'New Organization' : (isLogin ? 'Welcome Back' : 'Join Team'))}
         </h1>
         <p className="text-xs font-medium text-slate-500 max-w-[220px] mx-auto leading-relaxed">
-          {isNewOrg 
-            ? 'Set up a new space for your school or business.' 
-            : (isLogin ? 'Sign in to access your secure workplace dashboard.' : 'Follow the link or use a code to join your group.')}
+          {verificationNeeded 
+            ? `We've sent a secure link to ${verificationNeeded.email}.`
+            : (isNewOrg 
+              ? 'Set up a new space for your school or business.' 
+              : (isLogin ? 'Sign in to access your secure workplace dashboard.' : 'Follow the link or use a code to join your group.'))}
         </p>
       </div>
 
       {/* Form Card */}
       <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 flex-1 flex flex-col">
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-2xl text-red-600 dark:text-red-400 text-xs font-medium animate-in fade-in slide-in-from-top-2">
-            {error}
+        {verificationNeeded ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-8">
+            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-600 mb-6">
+              <Mail className="w-8 h-8" />
+            </div>
+            <p className="text-sm text-center text-slate-600 dark:text-slate-400 mb-8 max-w-[200px]">
+              Tap the link in your inbox to unlock your DoorLog account.
+            </p>
+            <button 
+              onClick={handleResendLink}
+              disabled={loading}
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:opacity-80 transition-all flex items-center gap-2"
+            >
+              {loading ? <Loader2 className="w-3 h-3 animate-spin"/> : 'Resend Verification Link'}
+            </button>
+            <button 
+              onClick={() => setVerificationNeeded(null)}
+              className="mt-12 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] hover:text-slate-600"
+            >
+              Back to Login
+            </button>
           </div>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <AnimatePresence mode="wait">
-            {!isLogin && (
-              <motion.div 
-                key={isNewOrg ? "new-org" : "register"}
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                {isNewOrg && (
-                   <>
-                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Org / Business Name</label>
-                     <div className="relative mb-5">
-                       <ArrowRight className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
-                       <input 
-                         type="text" 
-                         required 
-                         placeholder="e.g. Lagos Tech School"
-                         value={formData.companyName}
-                         onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                         className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                       />
-                     </div>
-                   </>
-                )}
-
-                {!isNewOrg && (
-                  <>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Select Organization</label>
-                    <div className="relative mb-5">
-                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
-                      <select 
-                        required 
-                        value={formData.companyId}
-                        onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
-                      >
-                        <option value="">Select Company</option>
-                        {availableCompanies.filter(c => c && c.id).map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Working Branch</label>
-                    <div className="relative mb-5">
-                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
-                      <select 
-                        required 
-                        disabled={!formData.companyId}
-                        value={formData.branchId}
-                        onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
-                      >
-                        <option value="">{formData.companyId ? 'Select your branch' : 'Pick company first'}</option>
-                        {branches.filter(b => b && b.id).map(b => (
-                          <option key={b.id} value={b.id}>{b.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-                
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Full Name</label>
-                <div className="relative mb-5">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder={isNewOrg ? "Admin Full Name" : "e.g. Emeka Obi"}
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                  />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
-              <input 
-                type="email" 
-                required 
-                placeholder="emeka.obi@company.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center px-1 mb-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Password</label>
-              {isLogin && (
-                <button 
-                  type="button" 
-                  onClick={() => setShowForgot(true)}
-                  className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider"
-                >
-                  Forgot?
-                </button>
-              )}
-            </div>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
-              <input 
-                type={showPassword ? 'text' : 'password'} 
-                required 
-                placeholder="Minimum 8 characters"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className={`w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-12 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
-                  !isLogin && formData.password && formData.password.length < 8 ? 'border-amber-400' : ''
-                }`} 
-              />
-              <button 
-                type="button" 
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" /> }
-              </button>
-            </div>
-            {!isLogin && formData.password && (
-              <div className="flex flex-wrap gap-2 px-1 mt-2">
-                {[
-                  { label: '8+ Chars', met: formData.password.length >= 8 },
-                  { label: 'Uppercase', met: /[A-Z]/.test(formData.password) },
-                  { label: 'Number', met: /[0-9]/.test(formData.password) }
-                ].map((req, i) => (
-                  <div key={i} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider ${req.met ? 'text-emerald-500' : 'text-slate-400'}`}>
-                    <div className={`w-1 h-1 rounded-full ${req.met ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    {req.label}
-                  </div>
-                ))}
+        ) : (
+          <>
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-2xl text-red-600 dark:text-red-400 text-xs font-medium animate-in fade-in slide-in-from-top-2">
+                {error}
               </div>
             )}
-          </div>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <AnimatePresence mode="wait">
+                {!isLogin && (
+                  <motion.div 
+                    key={isNewOrg ? "new-org" : "register"}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    {isNewOrg && (
+                       <>
+                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Org / Business Name</label>
+                         <div className="relative mb-5">
+                           <ArrowRight className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                           <input 
+                             type="text" 
+                             required 
+                             placeholder="e.g. Lagos Tech School"
+                             value={formData.companyName}
+                             onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                             className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                           />
+                         </div>
+                       </>
+                    )}
 
-          <div className="flex gap-4">
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="flex-1 bg-indigo-600 text-white font-bold py-5 rounded-[28px] mt-4 flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-900/50 disabled:scale-100"
-            >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <span className="uppercase tracking-widest text-xs">
-                    {isLogin ? 'Sign In' : 'Create Account'}
-                  </span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+                    {!isNewOrg && (
+                      <>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Select Organization</label>
+                        <div className="relative mb-5">
+                          <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                          <select 
+                            required 
+                            value={formData.companyId}
+                            onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
+                          >
+                            <option value="">Select Company</option>
+                            {availableCompanies.filter(c => c && c.id).map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
 
-        <div className="mt-8 text-center">
-          <p className="text-xs font-medium text-slate-400 mb-1">
-            {isLogin ? "Don't have an account?" : (isNewOrg ? "Back to registration?" : "Organization not listed?")}
-          </p>
-          <div className="flex flex-col gap-2">
-            <button 
-              type="button"
-              onClick={() => {
-                if (isNewOrg) {
-                    setIsNewOrg(false);
-                    setIsLogin(false);
-                } else {
-                    setIsLogin(!isLogin);
-                    setIsNewOrg(false);
-                    setFormData(prev => ({ ...prev, branchId: '', companyId: '' }));
-                }
-                setError(null);
-              }}
-              className="text-xs font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors underline-offset-4 hover:underline"
-            >
-              {isLogin ? "Join your team" : "Back to login"}
-            </button>
-            {(isLogin || !isNewOrg) && (
-              <button 
-                type="button"
-                onClick={() => {
-                   setIsNewOrg(true);
-                   setIsLogin(false);
-                   setError(null);
-                   setFormData(prev => ({ ...prev, companyId: '', branchId: '', companyName: '' }));
-                }}
-                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:opacity-80 underline-offset-4 hover:underline"
-              >
-                Register my Organization
-              </button>
-            )}
-          </div>
-        </div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Working Branch</label>
+                        <div className="relative mb-5">
+                          <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                          <select 
+                            required 
+                            disabled={!formData.companyId}
+                            value={formData.branchId}
+                            onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none" 
+                          >
+                            <option value="">{formData.companyId ? 'Select your branch' : 'Pick company first'}</option>
+                            {branches.filter(b => b && b.id).map(b => (
+                              <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Full Name</label>
+                    <div className="relative mb-5">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder={isNewOrg ? "Admin Full Name" : "e.g. Emeka Obi"}
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                  <input 
+                    type="email" 
+                    required 
+                    placeholder="emeka.obi@company.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center px-1 mb-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Password</label>
+                  {isLogin && (
+                    <button 
+                      type="button" 
+                      onClick={() => setShowForgot(true)}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider"
+                    >
+                      Forgot?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600" />
+                  <input 
+                    type={showPassword ? 'text' : 'password'} 
+                    required 
+                    placeholder="Minimum 8 characters"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className={`w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 pl-12 pr-12 text-sm font-medium dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                      !isLogin && formData.password && formData.password.length < 8 ? 'border-amber-400' : ''
+                    }`} 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" /> }
+                  </button>
+                </div>
+                {!isLogin && formData.password && (
+                  <div className="flex flex-wrap gap-2 px-1 mt-2">
+                    {[
+                      { label: '8+ Chars', met: formData.password.length >= 8 },
+                      { label: 'Uppercase', met: /[A-Z]/.test(formData.password) },
+                      { label: 'Number', met: /[0-9]/.test(formData.password) }
+                    ].map((req, i) => (
+                      <div key={i} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider ${req.met ? 'text-emerald-500' : 'text-slate-400'}`}>
+                        <div className={`w-1 h-1 rounded-full ${req.met ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                        {req.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="flex-1 bg-indigo-600 text-white font-bold py-5 rounded-[28px] mt-4 flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-900/50 disabled:scale-100"
+                >
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <span className="uppercase tracking-widest text-xs">
+                        {isLogin ? 'Sign In' : 'Create Account'}
+                      </span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-8 text-center">
+              <p className="text-xs font-medium text-slate-400 mb-1">
+                {isLogin ? "Don't have an account?" : (isNewOrg ? "Back to registration?" : "Organization not listed?")}
+              </p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    if (isNewOrg) {
+                        setIsNewOrg(false);
+                        setIsLogin(false);
+                    } else {
+                        setIsLogin(!isLogin);
+                        setIsNewOrg(false);
+                        setFormData(prev => ({ ...prev, branchId: '', companyId: '' }));
+                    }
+                    setError(null);
+                  }}
+                  className="text-xs font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors underline-offset-4 hover:underline"
+                >
+                  {isLogin ? "Join your team" : "Back to login"}
+                </button>
+                {(isLogin || !isNewOrg) && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                       setIsNewOrg(true);
+                       setIsLogin(false);
+                       setError(null);
+                       setFormData(prev => ({ ...prev, companyId: '', branchId: '', companyName: '' }));
+                    }}
+                    className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:opacity-80 underline-offset-4 hover:underline"
+                  >
+                    Register my Organization
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Forgot Password Overlay */}

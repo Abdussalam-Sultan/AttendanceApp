@@ -2,8 +2,21 @@ import express from 'express';
 import { authenticate, isAdmin, isManager } from '../middleware/auth.js';
 import { User, Branch, Attendance, LeaveRequest, Department } from '../models/associations.js';
 import { Op } from 'sequelize';
+import { seedDatabase } from '../scripts/seed.js';
 
 const router = express.Router();
+
+// Seed database with dummy data
+router.post('/seed', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { count } = req.body;
+    const result = await seedDatabase(count || 10, req.companyId);
+    res.send(result);
+  } catch (error) {
+    console.error('Seed error:', error);
+    res.status(500).send({ error: error.message });
+  }
+});
 
 // Get branch stats
 router.get('/branch-stats', authenticate, isAdmin, async (req, res) => {

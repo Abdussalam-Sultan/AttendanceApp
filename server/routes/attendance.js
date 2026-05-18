@@ -6,6 +6,7 @@ import Branch from '../models/Branch.js';
 import Department from '../models/Department.js';
 import SystemSettings from '../models/SystemSettings.js';
 import Notification from '../models/Notification.js';
+import { sendEmail, emailTemplates } from '../services/emailService.js';
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 
@@ -102,6 +103,26 @@ router.patch('/settings', authenticate, isManager, async (req, res) => {
       content: 'Attendance policies (working hours or grace periods) have been updated by admin.',
       type: 'POLICY_CHANGE'
     });
+
+    // Send email to all company users
+    try {
+      const users = await User.findAll({
+        where: { companyId: req.companyId, status: 'Active' },
+        attributes: ['email']
+      });
+
+      const template = emailTemplates.policyUpdate(settings);
+      for (const u of users) {
+        if (u.email) {
+          sendEmail({
+            to: u.email,
+            ...template
+          }).catch(err => console.error('Error sending policy update email:', err));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to send policy update emails:', err);
+    }
 
     res.send(settings);
   } catch (error) {
@@ -533,6 +554,16 @@ router.patch('/records/:id', authenticate, isManager, async (req, res) => {
       content: `An administrator has manually updated your attendance record for ${record.date}.`,
       type: 'ATTENDANCE_STATUS'
     });
+
+    // Send email to user about manual correction
+    const affectedUser = await User.findByPk(record.userId);
+    if (affectedUser && affectedUser.email) {
+      const template = emailTemplates.attendanceCorrection(record);
+      sendEmail({
+        to: affectedUser.email,
+        ...template
+      }).catch(err => console.error('Error sending attendance correction email:', err));
+    }
 
     res.send(record);
   } catch (error) {

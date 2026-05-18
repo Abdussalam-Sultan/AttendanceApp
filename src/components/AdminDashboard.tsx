@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter, Download, BellPlus, X, Send, Megaphone, Settings, ShieldCheck, Trash2, Edit2, UserX, Tag, Building2, MapPin, UserPlus, Shield, ArrowRight, ArrowLeft, PlusCircle, User, Eye, Mail, Table, CheckSquare, Square, ChevronDown, Check, Crown, AlertCircle, Calendar, FileText, Loader2, Navigation, HelpCircle, MessageSquare, User as UserIcon, Plane } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, MoreVertical, Filter, Download, BellPlus, X, Send, Megaphone, Settings, ShieldCheck, Trash2, Edit2, UserX, Tag, Building2, MapPin, UserPlus, Shield, ArrowRight, ArrowLeft, PlusCircle, User, Eye, Mail, Table, CheckSquare, Square, ChevronDown, Check, Crown, AlertCircle, Calendar, FileText, Loader2, Navigation, HelpCircle, MessageSquare, User as UserIcon, Plane, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -35,11 +35,12 @@ const LocationPickerMap = ({ onSelect }: { onSelect: (lat: number, lng: number) 
   return null;
 };
 
-import { format } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { CustomDropdown } from './CustomDropdown';
 import { api } from '../services/api';
 import { haptics } from '../lib/haptics';
 import { CopyButton } from './CopyButton';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell, PieChart, Pie } from 'recharts';
 
 import { useToast } from './ToastProvider';
 
@@ -128,6 +129,7 @@ export const AdminDashboard: React.FC<{
     collections: ['announcements', 'leaves'] as string[]
   });
   const [pruningLoading, setPruningLoading] = useState(false);
+  const [seedLoading, setSeedLoading] = useState(false);
 
   // User edit state (for admin)
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -161,6 +163,38 @@ export const AdminDashboard: React.FC<{
   const [announceLoading, setAnnounceLoading] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<any | null>(null);
   const [isLauncherOpen, setIsLauncherOpen] = useState(true);
+
+  // Analytics derived state
+  const attendanceTrends = React.useMemo(() => {
+    if (!records || records.length === 0) return [];
+    
+    // Group by date for the last 7 days
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = subDays(new Date(), i);
+      return format(d, 'dd MMM');
+    }).reverse();
+
+    return days.map(dayLabel => {
+      const dayRecords = records.filter(r => r.date === dayLabel);
+      return {
+        name: dayLabel,
+        present: dayRecords.filter(r => r.status === 'present').length,
+        late: dayRecords.filter(r => r.status === 'late').length,
+        absent: dayRecords.filter(r => r.status === 'absent').length,
+        leave: dayRecords.filter(r => r.status === 'leave').length,
+      };
+    });
+  }, [records]);
+
+  const departmentDistribution = React.useMemo(() => {
+    if (!users || users.length === 0) return [];
+    const counts: Record<string, number> = {};
+    users.forEach(u => {
+      const dept = u.Department?.name || u.department || 'General';
+      counts[dept] = (counts[dept] || 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [users]);
 
   // Support states
   const [supportContacts, setSupportContacts] = useState<any[]>([]);
@@ -728,6 +762,26 @@ export const AdminDashboard: React.FC<{
     }
   };
 
+  const handleSeedData = async () => {
+    const confirmed = await confirm(
+      "DEVELOPMENT SEEDING",
+      "This will inject 150+ realistic records (Users, Attendance, Announcements) into your database. Existing data will NOT be deleted, but many new records will be added. Continue?"
+    );
+    if (!confirmed) return;
+
+    setSeedLoading(true);
+    try {
+      await api.seedData();
+      toast("Database successfully seeded with realistic dev data!", "success");
+      fetchData();
+    } catch (error: any) {
+      console.error("Seeding failed:", error);
+      toast(error.message || "Seeding failed", "error");
+    } finally {
+      setSeedLoading(false);
+    }
+  };
+
   const handleSaveSupport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupport.label || !newSupport.value) return;
@@ -973,7 +1027,7 @@ export const AdminDashboard: React.FC<{
     <motion.div
       key={emp.id}
       variants={listItemVariants}
-      className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-4 rounded-3xl transition-all duration-300 ${
+      className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-4 rounded-2xl transition-all duration-300 ${
         selectedUserIds.includes(emp.id) 
           ? 'bg-indigo-50/80 dark:bg-indigo-500/10 ring-1 ring-indigo-500/20 shadow-lg' 
           : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/5'
@@ -1009,11 +1063,11 @@ export const AdminDashboard: React.FC<{
             <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">{emp.name}</h3>
             {emp.role === 'Admin' && <Crown className="w-3 h-3 text-amber-500" />}
             {userAttendanceStatus[emp.id] && (
-              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
-                userAttendanceStatus[emp.id] === 'present' ? 'bg-emerald-50 text-emerald-600' :
-                userAttendanceStatus[emp.id] === 'late' ? 'bg-amber-50 text-amber-600' :
-                userAttendanceStatus[emp.id] === 'leave' ? 'bg-indigo-50 text-indigo-600' :
-                'bg-red-50 text-red-600'
+              <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold uppercase tracking-tighter ${
+                userAttendanceStatus[emp.id] === 'present' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' :
+                userAttendanceStatus[emp.id] === 'late' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' :
+                userAttendanceStatus[emp.id] === 'leave' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400' :
+                'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
               }`}>
                 {userAttendanceStatus[emp.id]}
               </span>
@@ -1069,11 +1123,85 @@ export const AdminDashboard: React.FC<{
       animate="show"
       className="space-y-8"
     >
+      {/* Attendance Trend Chart Card */}
+      <motion.div 
+        variants={listItemVariants}
+        className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Staff Presence Pulse</h3>
+            <p className="text-[10px] font-medium text-slate-400">Activity trends for the past 7 days</p>
+          </div>
+          <div className="flex gap-1">
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Present</span>
+            </div>
+            <div className="flex items-center gap-1 mx-2">
+              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Late</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-48 w-full -ml-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={attendanceTrends}>
+              <defs>
+                <linearGradient id="colorPresent" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorLate" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 600 }} 
+                dy={10}
+              />
+              <YAxis hide />
+              <Tooltip 
+                contentStyle={{ 
+                  borderRadius: '16px', 
+                  border: 'none', 
+                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                  fontSize: '10px',
+                  fontWeight: 'bold'
+                }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="present" 
+                stroke="#10b981" 
+                strokeWidth={3}
+                fillOpacity={1} 
+                fill="url(#colorPresent)" 
+              />
+              <Area 
+                type="monotone" 
+                dataKey="late" 
+                stroke="#f59e0b" 
+                strokeWidth={3}
+                fillOpacity={1} 
+                fill="url(#colorLate)" 
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </motion.div>
+
       {/* Direct Quick Approval Card */}
       {pendingLeaves.length > 0 && (
         <motion.div 
           variants={listItemVariants}
-          className="p-4 bg-indigo-600 rounded-[28px] text-white flex items-center justify-between gap-4 mt-2 overflow-hidden relative shadow-lg shadow-indigo-500/30"
+          className="p-4 bg-indigo-600 rounded-2xl text-white flex items-center justify-between gap-4 mt-2 overflow-hidden relative shadow-lg shadow-indigo-500/30"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
           <div className="relative z-10">
@@ -1110,13 +1238,13 @@ export const AdminDashboard: React.FC<{
               }
               haptics.impact();
             }}
-            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-3 text-left hover:border-indigo-100 dark:hover:border-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group active:scale-95"
+            className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-3 text-left hover:border-indigo-100 dark:hover:border-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group active:scale-95"
           >
             <div className={`w-10 h-10 shrink-0 rounded-2xl ${stat.bg} dark:bg-opacity-10 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform`}>
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-black text-slate-900 dark:text-white leading-none mb-0.5">{stat.value}</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-0.5">{stat.value}</p>
               <div className="flex items-center gap-1">
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{stat.label}</p>
                 <ArrowRight className="w-2 h-2 text-slate-300 group-hover:text-indigo-500 transition-colors" />
@@ -1143,7 +1271,7 @@ export const AdminDashboard: React.FC<{
                 setStatusFilters([]);
                 haptics.impact();
               }}
-              className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-indigo-500/5 transition-all group active:scale-95"
+              className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-left hover:shadow-lg hover:shadow-indigo-500/5 transition-all group active:scale-95"
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 group-hover:scale-110 transition-transform shadow-sm`}>
                 <module.icon className={`w-4 h-4 ${module.color}`} />
@@ -1181,7 +1309,7 @@ export const AdminDashboard: React.FC<{
                 setStatusFilters([]);
                 haptics.impact();
               }}
-              className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] text-left hover:shadow-lg hover:shadow-slate-500/5 transition-all group active:scale-95"
+              className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-left hover:shadow-lg hover:shadow-slate-500/5 transition-all group active:scale-95"
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${module.bg} dark:bg-opacity-10 shadow-sm group-hover:scale-110 transition-transform`}>
                 <module.icon className={`w-4 h-4 ${module.color}`} />
@@ -1196,32 +1324,100 @@ export const AdminDashboard: React.FC<{
 
   return (
     <div className="flex flex-col gap-6 pb-24">
-      {/* Dynamic Header */}
+      {/* Consolidated Dynamic Header */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex justify-between items-center px-1"
       >
-        <div className="flex flex-col gap-0.5">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">
-            {isLauncherOpen ? (user?.role === 'Manager' ? 'Operations' : 'Management') : (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))}
-          </h1>
-          <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
-            {isLauncherOpen ? (user?.role === 'Manager' ? 'Branch Oversight' : 'System Console') : 'Active Module'}
-          </p>
-        </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
           {!isLauncherOpen && (
             <motion.button 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setIsLauncherOpen(true)}
-              className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-[10px] font-bold uppercase tracking-widest text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-colors shadow-sm"
+              initial={{ opacity: 0, scale: 0.9, x: -10 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => {
+                setIsLauncherOpen(true);
+                setStatusFilters([]);
+              }}
+              className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 transition-all shadow-sm"
             >
-              Back to Hub
+              <ArrowLeft className="w-5 h-5" />
             </motion.button>
           )}
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-tight">
+              {isLauncherOpen ? (user?.role === 'Manager' ? 'Operations' : 'Management') : (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))}
+            </h1>
+            {!isLauncherOpen && (
+              <p className="text-[9px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                Administration
+              </p>
+            )}
+            {isLauncherOpen && (
+              <p className="text-[9px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                {user?.role === 'Manager' ? 'Branch Oversight' : 'System Console'}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!isLauncherOpen && ['workforce', 'departments', 'branches'].includes(activeTab) && (
+            <div className="relative flex items-center gap-2">
+              <button 
+                onClick={() => setShowDateFilters(!showDateFilters)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-2xl border transition-all active:scale-95 ${
+                  showDateFilters 
+                    ? 'bg-indigo-600 text-white border-transparent shadow-lg shadow-indigo-200' 
+                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 shadow-sm'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${showDateFilters ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {showDateFilters && (
+                  <>
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[100]"
+                      onClick={() => setShowDateFilters(false)}
+                    />
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="absolute right-0 top-full mt-2 flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-2xl z-[101] overflow-hidden min-w-[200px]"
+                    >
+                       <div className="flex flex-col gap-1 p-4 border-b border-slate-100 dark:border-slate-800">
+                         <label className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Observation Start</label>
+                         <input 
+                          type="date" 
+                          value={dateRange.start}
+                          onChange={e => setDateRange({...dateRange, start: e.target.value})}
+                          className="bg-transparent border-none text-xs font-black text-slate-900 dark:text-white focus:ring-0 p-0 cursor-pointer w-full"
+                        />
+                       </div>
+                       <div className="flex flex-col gap-1 p-4">
+                         <label className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Observation End</label>
+                         <input 
+                          type="date" 
+                          value={dateRange.end}
+                          onChange={e => setDateRange({...dateRange, end: e.target.value})}
+                          className="bg-transparent border-none text-xs font-black text-slate-900 dark:text-white focus:ring-0 p-0 cursor-pointer w-full"
+                        />
+                       </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           <motion.button 
             whileTap={{ scale: 0.95 }}
             onClick={() => {
@@ -1251,7 +1447,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 flex flex-col overflow-hidden"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-3xl shadow-2xl p-8 flex flex-col overflow-hidden"
             >
               <div className="flex justify-between items-center mb-6 mt-2">
                 <div className="flex items-center gap-3">
@@ -1313,7 +1509,7 @@ export const AdminDashboard: React.FC<{
                 <button 
                   type="submit"
                   disabled={announceLoading || !newAnnouncement.title || !newAnnouncement.content}
-                  className="mt-4 flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-5 rounded-3xl active:scale-95 transition-all text-xs uppercase tracking-[0.25em] disabled:opacity-50"
+                  className="mt-4 flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3.5 rounded-2xl active:scale-95 transition-all text-xs uppercase tracking-[0.25em] disabled:opacity-50"
                 >
                   {announceLoading ? <Clock className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   {editingAnnouncement ? 'Save Changes' : 'Publish Now'}
@@ -1339,10 +1535,10 @@ export const AdminDashboard: React.FC<{
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[211] rounded-[40px] shadow-2xl p-8 flex flex-col"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[211] rounded-3xl shadow-2xl p-8 flex flex-col"
             >
               <div className="flex justify-between items-start mb-6">
-                <div className="p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 shadow-sm">
+                <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 shadow-sm">
                   <Megaphone className="w-8 h-8" />
                 </div>
                 <button 
@@ -1363,7 +1559,7 @@ export const AdminDashboard: React.FC<{
                      {selectedAnnouncement.date}
                    </span>
                 </div>
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">
                   {selectedAnnouncement.title}
                 </h3>
               </div>
@@ -1402,7 +1598,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-3xl shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1551,7 +1747,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-3xl shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1622,7 +1818,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-[40px] shadow-2xl p-8 overflow-y-auto no-scrollbar"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[101] rounded-3xl shadow-2xl p-8 overflow-y-auto no-scrollbar"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -1845,7 +2041,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-[40px] shadow-2xl overflow-y-auto no-scrollbar"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-slate-50 dark:bg-slate-950 z-[101] rounded-3xl shadow-2xl overflow-y-auto no-scrollbar"
             >
               <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 px-8 py-6 flex justify-between items-center border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-4">
@@ -1874,7 +2070,7 @@ export const AdminDashboard: React.FC<{
 
               <div className="p-8 space-y-8">
                 {/* Employee Card */}
-                <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee ID</p>
@@ -1911,7 +2107,7 @@ export const AdminDashboard: React.FC<{
                 {/* Contact Section */}
                 <div className="space-y-4">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Contact Details</h3>
-                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-2 space-y-1">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-2 space-y-1">
                     {[
                       { icon: Mail, label: 'Email Address', value: selectedUser.email },
                       { icon: MapPin, label: 'Resident Address', value: selectedUser.address || 'Manchester, UK' },
@@ -1934,7 +2130,7 @@ export const AdminDashboard: React.FC<{
                 {/* Additional Metadata */}
                 <div className="space-y-4">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Device Security</h3>
-                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
@@ -1952,8 +2148,8 @@ export const AdminDashboard: React.FC<{
                         disabled={!selectedUser.deviceId || updatingId === selectedUser.id}
                         className={`px-4 py-2 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all ${
                           selectedUser.deviceId 
-                            ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' 
-                            : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                            ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20' 
+                            : 'bg-slate-50 text-slate-300 cursor-not-allowed dark:bg-slate-800'
                         }`}
                       >
                         {updatingId === selectedUser.id ? 'Resetting...' : 'Reset Binding'}
@@ -1965,7 +2161,7 @@ export const AdminDashboard: React.FC<{
                 {/* Additional Metadata */}
                 <div className="space-y-4">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-2">Personnel Metadata</h3>
-                  <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6">
                     <div className="space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="flex items-center justify-between">
@@ -2016,7 +2212,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="fixed inset-6 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+              className="fixed inset-6 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-white dark:bg-slate-900 z-[151] rounded-3xl shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
             >
               <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                 <div className="flex items-center gap-3">
@@ -2112,89 +2308,9 @@ export const AdminDashboard: React.FC<{
             className="space-y-6 animate-in fade-in duration-500"
           >
             <div className="flex flex-col gap-6">
-              <div className="flex items-center justify-between px-2 mb-6">
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => {
-                      setIsLauncherOpen(true);
-                      setStatusFilters([]);
-                    }}
-                    className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-400 group transition-all"
-                  >
-                    <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                  </button>
-                  <div>
-                    <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight capitalize">{activeTab}</h1>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Management Hub</p>
-                  </div>
-                </div>
-
-                {['workforce', 'departments', 'branches'].includes(activeTab) && (
-                  <div className="relative flex items-center gap-2 self-end sm:self-auto">
-                    <button 
-                      onClick={() => setShowDateFilters(!showDateFilters)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-2xl border transition-all active:scale-95 ${
-                        showDateFilters 
-                          ? 'bg-indigo-600 text-white border-transparent shadow-lg shadow-indigo-200' 
-                          : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 shadow-sm'
-                      }`}
-                    >
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span className="text-[8px] font-black uppercase tracking-widest">
-                        {safeFormat(dateRange.start, 'MM/dd')} - {safeFormat(dateRange.end, 'MM/dd')}
-                      </span>
-                      <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${showDateFilters ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    <AnimatePresence>
-                      {showDateFilters && (
-                        <>
-                          <motion.div 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[100]"
-                            onClick={() => setShowDateFilters(false)}
-                          />
-                          <motion.div 
-                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="fixed sm:absolute right-4 left-4 sm:left-auto sm:right-0 top-1/2 sm:top-full sm:mt-2 -translate-y-1/2 sm:translate-y-0 flex flex-col sm:flex-row gap-0 sm:items-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-2xl z-[101] overflow-hidden min-w-[280px] sm:min-w-[400px]"
-                          >
-                             <div className="flex-1 flex flex-col gap-1 p-5 border-b sm:border-b-0 sm:border-r border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Observation Start</label>
-                               <input 
-                                type="date" 
-                                value={dateRange.start}
-                                onChange={e => setDateRange({...dateRange, start: e.target.value})}
-                                className="bg-transparent border-none text-xs font-black text-slate-900 dark:text-white focus:ring-0 p-0 cursor-pointer w-full"
-                              />
-                             </div>
-                             <div className="flex-1 flex flex-col gap-1 p-5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Observation End</label>
-                               <input 
-                                type="date" 
-                                value={dateRange.end}
-                                onChange={e => setDateRange({...dateRange, end: e.target.value})}
-                                className="bg-transparent border-none text-xs font-black text-slate-900 dark:text-white focus:ring-0 p-0 cursor-pointer w-full"
-                              />
-                             </div>
-                          </motion.div>
-                        </>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-              </div>
-
               {activeTab === 'support' && user?.role === 'Admin' ? (
                 <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                   <div className="flex justify-between items-center px-2">
-                    <div>
-                      <h2 className="text-sm font-bold text-slate-900 dark:text-white">Support Desk</h2>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Help center management</p>
-                    </div>
                     {supportSubTab === 'channels' && (
                       <button 
                         onClick={() => {
@@ -2292,7 +2408,7 @@ export const AdminDashboard: React.FC<{
                   ) : (
                     <div className="grid gap-4">
                       {supportTickets.map((ticket) => (
-                        <div key={ticket.id} className="bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4 group">
+                        <div key={ticket.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4 group">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 shadow-sm overflow-hidden">
@@ -2311,9 +2427,9 @@ export const AdminDashboard: React.FC<{
                             </div>
                             <div className="flex items-center gap-2">
                               <span className={`text-[8px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
-                                ticket.status === 'pending' ? 'bg-amber-50 text-amber-600' :
-                                ticket.status === 'resolved' ? 'bg-emerald-50 text-emerald-600' :
-                                'bg-slate-100 text-slate-500'
+                                ticket.status === 'pending' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' :
+                                ticket.status === 'resolved' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' :
+                                'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                               }`}>
                                 {ticket.status}
                               </span>
@@ -2393,7 +2509,7 @@ export const AdminDashboard: React.FC<{
                     >
                       <button 
                         onClick={() => setActiveTab('approvals')}
-                        className="w-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-5 rounded-[32px] flex items-center justify-between group hover:border-amber-400 transition-all text-left shadow-sm"
+                        className="w-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-5 rounded-2xl flex items-center justify-between group hover:border-amber-400 transition-all text-left shadow-sm"
                       >
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-[20px] flex items-center justify-center animate-pulse border border-amber-200/50">
@@ -2467,12 +2583,12 @@ export const AdminDashboard: React.FC<{
               </div>
 
             <div className="grid gap-3">
-              <div className="bg-indigo-600 p-6 rounded-[32px] text-white flex flex-col gap-4 relative overflow-hidden">
+              <div className="bg-indigo-600 p-6 rounded-2xl text-white flex flex-col gap-4 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
                 <div className="flex justify-between items-center relative z-10">
                    <div>
                      <p className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.2em] mb-1">Structural Overview</p>
-                     <h2 className="text-xl font-black">{departments.length} DEPARTMENTS</h2>
+                     <h2 className="text-xl font-bold">{departments.length} DEPARTMENTS</h2>
                    </div>
                    <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center">
                      <Building2 className="w-5 h-5 text-white" />
@@ -2480,7 +2596,7 @@ export const AdminDashboard: React.FC<{
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden text-sm uppercase font-bold tracking-widest p-4">
                 <div className="overflow-x-auto no-scrollbar">
                   <table className="w-full text-left border-collapse min-w-[400px]">
                     <thead>
@@ -2548,10 +2664,10 @@ export const AdminDashboard: React.FC<{
                    
                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
                      {[
-                       { id: 'present', label: 'Present', color: 'bg-emerald-50 text-emerald-600', active: 'bg-emerald-600 text-white' },
-                       { id: 'late', label: 'Late', color: 'bg-amber-50 text-amber-600', active: 'bg-amber-600 text-white' },
-                       { id: 'absent', label: 'Absent', color: 'bg-red-50 text-red-600', active: 'bg-red-600 text-white' },
-                       { id: 'leave', label: 'Leave', color: 'bg-indigo-50 text-indigo-600', active: 'bg-indigo-600 text-white' }
+                       { id: 'present', label: 'Present', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400', active: 'bg-emerald-600 text-white' },
+                       { id: 'late', label: 'Late', color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400', active: 'bg-amber-600 text-white' },
+                       { id: 'absent', label: 'Absent', color: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400', active: 'bg-red-600 text-white' },
+                       { id: 'leave', label: 'Leave', color: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400', active: 'bg-indigo-600 text-white' }
                      ].map(filter => (
                        <button
                          key={filter.id}
@@ -2650,7 +2766,7 @@ export const AdminDashboard: React.FC<{
                 initial={{ opacity: 0, y: -50, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -50, scale: 0.9 }}
-                className="fixed top-24 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-md z-[101] bg-slate-900/95 dark:bg-slate-800/95 text-white p-4 rounded-[40px] shadow-2xl flex items-center justify-between gap-4 border border-slate-700/50 backdrop-blur-2xl ring-1 ring-white/10"
+                className="fixed top-24 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-md z-[101] bg-slate-900/95 dark:bg-slate-800/95 text-white p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4 border border-slate-700/50 backdrop-blur-2xl ring-1 ring-white/10"
               >
                 <div className="flex flex-col pl-4">
                   <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Bulk Actions</span>
@@ -2684,7 +2800,6 @@ export const AdminDashboard: React.FC<{
 
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-2">
             <div className="flex items-center gap-3">
-              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Leave Center</h2>
               <span className="px-2 py-0.5 bg-red-100 dark:bg-red-500/10 text-red-600 text-[8px] font-black uppercase tracking-widest rounded-full">
                 {pendingLeaves.length} PENDING
               </span>
@@ -2779,8 +2894,9 @@ export const AdminDashboard: React.FC<{
                     </div>
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                        <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
-                         req.status === 'Pending' ? 'bg-amber-50 text-amber-600' :
-                         req.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                         req.status === 'Pending' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' :
+                         req.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 
+                         'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
                        }`}>
                          {req.status}
                        </span>
@@ -2939,6 +3055,32 @@ export const AdminDashboard: React.FC<{
                 )}
               </AnimatePresence>
               {[
+                { id: 'admin-role', label: 'Admins', icon: <Crown className="w-3 h-3" />, role: 'Admin' },
+                { id: 'manager-role', label: 'Managers', icon: <Shield className="w-3 h-3" />, role: 'Manager' },
+                { id: 'staff-role', label: 'Staff', icon: <UserIcon className="w-3 h-3" />, role: 'Employee' }
+              ].map(filter => (
+                <button
+                  key={filter.id}
+                  onClick={() => {
+                    const searchStr = filter.role.toLowerCase();
+                    if (searchQuery.toLowerCase() === searchStr) {
+                      setSearchQuery('');
+                    } else {
+                      setSearchQuery(filter.role);
+                    }
+                  }}
+                  className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider border transition-all active:scale-95 ${
+                    searchQuery.toLowerCase() === filter.role.toLowerCase()
+                      ? `bg-indigo-600 border-transparent text-white shadow-lg shadow-indigo-500/20`
+                      : `bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400 hover:border-slate-200`
+                  }`}
+                >
+                  {filter.icon}
+                  {filter.label}
+                </button>
+              ))}
+              <div className="w-px h-4 bg-slate-100 dark:bg-slate-800 mx-1 shrink-0" />
+              {[
                 { id: 'present', label: 'Present', color: 'text-emerald-600', dot: 'bg-emerald-500' },
                 { id: 'late', label: 'Late', color: 'text-amber-600', dot: 'bg-amber-500' },
                 { id: 'absent', label: 'Absent', color: 'text-red-600', dot: 'bg-red-500' },
@@ -3069,11 +3211,39 @@ export const AdminDashboard: React.FC<{
             </button>
           </div>
 
+          {/* Branch Pulse */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Staffing by Branch</h3>
+            <div className="h-48 w-full -ml-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={branchStats.map(b => ({ name: b.name.split(' ')[0], staff: b.totalEmployees || 0 }))}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 600 }}
+                  />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                  <Tooltip 
+                    cursor={{ fill: '#f8fafc' }}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '10px' }}
+                  />
+                  <Bar dataKey="staff" radius={[6, 6, 0, 0]} barSize={24}>
+                    {branchStats.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'][index % 5]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           {/* Branch Stats Grid */}
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex gap-4">
               {branchStats.map((bStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[240px] sm:min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm min-w-[240px] sm:min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
@@ -3180,11 +3350,50 @@ export const AdminDashboard: React.FC<{
             </button>
           </div>
 
+          {/* Department Pulse */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Team Distribution</h3>
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={departmentDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {departmentDistribution.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'][index % 5]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '10px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+            </div>
+            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl text-white overflow-hidden relative shadow-xl shadow-indigo-500/20">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+               <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-2">Organization Top Insight</p>
+               <h3 className="text-lg font-bold leading-tight mb-4">
+                 Largest group: {departmentDistribution.sort((a,b) => b.value - a.value)[0]?.name || 'N/A'}
+               </h3>
+               <div className="p-4 bg-white/10 rounded-2xl border border-white/10">
+                 <p className="text-[10px] text-indigo-50">Units are automatically tracked for attendance efficiency. Keep your department list updated for better geofencing accuracy.</p>
+               </div>
+            </div>
+          </div>
+
           {/* Department Stats Grid */}
           <div className="grid gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex gap-4">
               {departmentStats.map((dStats, i) => (
-                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm min-w-[240px] sm:min-w-[280px]">
+                <div key={i} className="flex-1 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm min-w-[240px] sm:min-w-[280px]">
                   <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600">
@@ -3269,7 +3478,6 @@ export const AdminDashboard: React.FC<{
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center px-2 mb-2">
             <div className="flex items-center gap-3">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Announcements</h2>
               <button 
                 onClick={() => setShowArchivedAnnouncements(!showArchivedAnnouncements)}
                 className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border transition-all ${
@@ -3374,7 +3582,7 @@ export const AdminDashboard: React.FC<{
           <form onSubmit={handleSaveSettings} className="space-y-8 pb-32">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-widest">Global Policies</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white uppercase tracking-widest">Global Policies</h3>
                 <p className="text-[11px] font-medium text-slate-400">Configure core attendance rules and automated behaviors</p>
               </div>
               <div className={`px-4 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
@@ -3771,6 +3979,44 @@ export const AdminDashboard: React.FC<{
                 </div>
               </div>
             </div>
+
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm border-indigo-50 dark:border-indigo-900/20 mt-4">
+              <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-500 mb-6 flex items-center gap-2">
+                <Database className="w-4 h-4" />
+                Developer Utilities
+              </h3>
+              
+              <div className="space-y-6">
+                <div className="space-y-3 p-4 bg-indigo-50/30 dark:bg-indigo-950/10 rounded-2xl border border-indigo-100/50 dark:border-indigo-900/20">
+                  <div className="flex items-center gap-2 text-indigo-600">
+                    <AlertCircle className="w-4 h-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest leading-none">Seed Development Data</p>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed italic">
+                    Quickly populate your organization with realistic employees, departments, branches, and attendance history. Perfect for UX testing and development.
+                  </p>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={handleSeedData}
+                  disabled={seedLoading}
+                  className="w-full flex items-center justify-center gap-2 py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/10 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {seedLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Seeding Database...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-4 h-4" />
+                      Seed Sample Data
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -3814,7 +4060,7 @@ export const AdminDashboard: React.FC<{
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[151] rounded-[40px] shadow-2xl p-8 flex flex-col overflow-hidden"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 z-[151] rounded-3xl shadow-2xl p-8 flex flex-col overflow-hidden"
             >
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
@@ -3877,7 +4123,7 @@ export const AdminDashboard: React.FC<{
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Status</label>
                   <div className="flex gap-2">
                     {[
-                      { id: true, label: 'Active', color: 'bg-emerald-50 text-emerald-600', activeBg: 'bg-emerald-600 text-white' },
+                      { id: true, label: 'Active', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400', activeBg: 'bg-emerald-600 text-white' },
                       { id: false, label: 'Hidden', color: 'bg-slate-50 text-slate-400', activeBg: 'bg-slate-600 text-white' }
                     ].map(opt => (
                       <button

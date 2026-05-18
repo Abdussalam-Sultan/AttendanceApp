@@ -529,6 +529,16 @@ export const api = {
     return await res.json();
   },
 
+  async seedData(count: number = 20) {
+    const res = await fetch('/api/admin/seed', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ count })
+    });
+    if (!res.ok) throw new Error('Seeding failed');
+    return await res.json();
+  },
+
   async getSupportContacts() {
     const res = await fetch('/api/support', {
       headers: getHeaders()
